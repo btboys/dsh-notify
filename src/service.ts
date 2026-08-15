@@ -1,4 +1,5 @@
 import { Context, Service } from '@deepseek-ai/cordis'
+import { appendFileSync } from 'fs'
 import { NotificationAdapter } from './adapters/base.js'
 import { SystemNotificationAdapter } from './adapters/system.js'
 import { WebhookNotificationAdapter } from './adapters/webhook.js'
@@ -320,10 +321,22 @@ export class NotifyService extends Service {
    * Register event listeners for DSH lifecycle events
    */
   private registerEventListeners(): void {
+    // Debug file for diagnosing event delivery in a running DSH
+    const DEBUG_LOG = '/tmp/dsh-notify-debug.log'
+    const debug = (msg: string, ...rest: any[]) => {
+      try {
+        appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${msg} ${rest.map(r => typeof r === 'string' ? r : JSON.stringify(r)).join(' ')}\n`)
+      } catch { /* ignore */ }
+    }
+    
+    debug('registerEventListeners called, enabled=', this.config.enabled)
+    
     // Listen for DSH session events
     // DSH uses session/event to dispatch all session lifecycle events
+    // Listener signature: (session, event)
     
     this.ctx.on('session/event' as any, async (session: any, event: any) => {
+      debug('session/event received, type=', event?.type, 'reason=', event?.data?.reason?.kind)
       this.ctx.logger.debug('[notify] Session event received:', event?.type)
       
       // Handle turn/end events
@@ -334,12 +347,14 @@ export class NotifyService extends Service {
         this.ctx.logger.info('[notify] Turn ended:', { turn, reason })
         
         if (reason === 'completed' || reason === 'max-tokens') {
+          debug('notifying conversation completed')
           await this.notifyConversationCompleted(
             '对话完成',
             `第 ${turn} 轮对话已完成`,
             { turn, reason }
           )
         } else if (reason === 'error') {
+          debug('notifying conversation failed')
           await this.notifyConversationFailed(
             '对话失败',
             `第 ${turn} 轮对话失败`,
@@ -347,6 +362,7 @@ export class NotifyService extends Service {
           )
         } else {
           // aborted / blocked / interrupted
+          debug('notifying conversation paused')
           await this.notifyConversationPaused(
             '对话暂停',
             `第 ${turn} 轮对话已暂停 (${reason})`,
@@ -358,6 +374,7 @@ export class NotifyService extends Service {
     
     // Listen for approval/confirmation events
     this.ctx.on('approval/request' as any, async (data: any) => {
+      debug('approval/request received')
       this.ctx.logger.debug('[notify] Approval requested')
       await this.notifyAuthorizationRequired(
         '需要授权',
@@ -367,6 +384,7 @@ export class NotifyService extends Service {
     })
     
     this.ctx.on('confirm/request' as any, async (data: any) => {
+      debug('confirm/request received')
       this.ctx.logger.debug('[notify] Confirmation requested')
       await this.notifyConfirmationRequired(
         '需要确认',
@@ -375,7 +393,7 @@ export class NotifyService extends Service {
       )
     })
     
-    this.ctx.logger.info('[notify] Event listeners registered')
+    debug('event listeners registered')
   }
   
   /**
