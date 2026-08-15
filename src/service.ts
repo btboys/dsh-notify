@@ -298,51 +298,56 @@ export class NotifyService extends Service {
    * Register event listeners for DSH lifecycle events
    */
   private registerEventListeners(): void {
-    // Listen for DSH agent lifecycle events
-    // Note: These event names may need adjustment based on actual DSH events
-    // Using type assertion to bypass strict event typing
+    // Listen for DSH session events
+    // DSH uses session/event to dispatch all session lifecycle events
     
-    this.ctx.on('agent/completed' as any, async (data: any) => {
-      this.ctx.logger.debug('[notify] Agent completed event received')
-      await this.notifyConversationCompleted(
-        'Agent Task Completed',
-        data?.message || 'The agent has completed its task',
-        data
-      )
+    this.ctx.on('session/event' as any, async (event: any) => {
+      this.ctx.logger.debug('[notify] Session event received:', event.type)
+      
+      // Handle turn/end events
+      if (event.type === 'turn/end') {
+        const reason = event.data?.reason?.kind || 'unknown'
+        const turn = event.data?.turn || 0
+        
+        this.ctx.logger.info('[notify] Turn ended:', { turn, reason })
+        
+        if (reason === 'complete' || reason === 'stop') {
+          await this.notifyConversationCompleted(
+            '对话完成',
+            `第 ${turn} 轮对话已完成`,
+            { turn, reason }
+          )
+        } else if (reason === 'error' || reason === 'failed') {
+          await this.notifyConversationFailed(
+            '对话失败',
+            `第 ${turn} 轮对话失败: ${reason}`,
+            { turn, reason }
+          )
+        } else if (reason === 'pause' || reason === 'wait') {
+          await this.notifyConversationPaused(
+            '对话暂停',
+            `第 ${turn} 轮对话已暂停`,
+            { turn, reason }
+          )
+        }
+      }
     })
     
-    this.ctx.on('agent/paused' as any, async (data: any) => {
-      this.ctx.logger.debug('[notify] Agent paused event received')
-      await this.notifyConversationPaused(
-        'Agent Task Paused',
-        data?.message || 'The agent task has been paused',
-        data
-      )
-    })
-    
-    this.ctx.on('agent/failed' as any, async (data: any) => {
-      this.ctx.logger.debug('[notify] Agent failed event received')
-      await this.notifyConversationFailed(
-        'Agent Task Failed',
-        data?.message || data?.error?.message || 'The agent task has failed',
-        { ...data, error: data?.error?.message }
-      )
-    })
-    
-    this.ctx.on('approval/requested' as any, async (data: any) => {
-      this.ctx.logger.debug('[notify] Approval requested event received')
+    // Listen for approval/confirmation events
+    this.ctx.on('approval/request' as any, async (data: any) => {
+      this.ctx.logger.debug('[notify] Approval requested')
       await this.notifyAuthorizationRequired(
-        'Authorization Required',
-        data?.message || 'Agent requires your authorization to proceed',
+        '需要授权',
+        data?.message || '操作需要您的授权',
         data
       )
     })
     
-    this.ctx.on('confirmation/requested' as any, async (data: any) => {
-      this.ctx.logger.debug('[notify] Confirmation requested event received')
+    this.ctx.on('confirm/request' as any, async (data: any) => {
+      this.ctx.logger.debug('[notify] Confirmation requested')
       await this.notifyConfirmationRequired(
-        'Confirmation Required',
-        data?.message || 'Agent needs your confirmation',
+        '需要确认',
+        data?.message || '操作需要您的确认',
         data
       )
     })

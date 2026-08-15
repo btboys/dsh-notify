@@ -224,6 +224,49 @@ Webhook 会收到以下 JSON payload：
 }
 ```
 
+## 🖥️ 在 Web "插件配置" 页面注册
+
+DSH Web 界面有「插件配置」页面，可以在浏览器中编辑插件配置。要让 notify 插件出现在那里，需要三步：
+
+### 1. 插件代码注册 settings 命名空间（已完成 ✅）
+
+插件已内置 `ctx.settings.register('notify', schema)` 逻辑（见 `src/settings.ts`），导出 `NOTIFY_SETTINGS_NAMESPACE` 和 `NOTIFY_SETTINGS_SCHEMA`。
+
+### 2. 在 host 平面挂载插件（不是 agent preset）
+
+编辑 `~/.dsh/profiles/web/cordis.patch.yml`：
+
+```yaml
+- id: notify
+  name: '/绝对/路径/到/dsh-notify'
+  config:
+    enabled: true
+    channels:
+      system:
+        enabled: true
+        sound: true
+    events:
+      conversationCompleted: true
+      conversationFailed: true
+      authorizationRequired: true
+```
+
+> ⚠️ agent preset 挂载的插件无法注册 settings 命名空间（host 平面才可以）。
+
+### 3. 将命名空间加入 apiproxy 白名单
+
+修改 `packages/host/apiproxy/src/api-proxy.ts` 中的 `WEB_SETTINGS_NAMESPACES`，加入 `'notify'`：
+
+```ts
+const WEB_SETTINGS_NAMESPACES = [
+  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation', 'ui-theme', 'web-search-deepseek', 'notify',
+] as const
+```
+
+> 这是当前 DSH 的机制：暴露名单是 host 的决定，而不是插件自声明。未来版本可能支持插件自我暴露（deferred work）。
+
+完成后重启 DSH，打开 Web → 设置 → 插件配置，即可看到 notify 卡片并编辑。
+
 ## 🛠️ 开发
 
 ```bash
@@ -235,6 +278,9 @@ npm run build
 
 # 开发模式（监听变化）
 npm run dev
+
+# 集成测试（验证 settings 注册）
+node test/integration.mjs
 ```
 
 ## 📝 示例

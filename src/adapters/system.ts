@@ -1,11 +1,14 @@
 import { Context } from '@deepseek-ai/cordis'
-// @ts-ignore - node-notifier types not available
-import notifier from 'node-notifier'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { NotificationAdapter } from './base.js'
 import { NotifyEvent, SystemNotifyConfig } from '../types.js'
 
+const execAsync = promisify(exec)
+
 /**
- * System notification adapter using node-notifier
+ * System notification adapter using native macOS notifications
+ * Avoids Rosetta compatibility warnings by using osascript instead of terminal-notifier
  */
 export class SystemNotificationAdapter implements NotificationAdapter {
   readonly name = 'system'
@@ -26,29 +29,27 @@ export class SystemNotificationAdapter implements NotificationAdapter {
     }
     
     try {
-      await new Promise<void>((resolve, reject) => {
-        notifier.notify(
-          {
-            title: event.title,
-            message: event.message,
-            sound: this.config.sound ?? true,
-            icon: this.config.icon,
-            wait: false,
-          },
-          (error: Error | null) => {
-            if (error) {
-              reject(error)
-            } else {
-              resolve()
-            }
-          }
-        )
-      })
+      // Escape special characters for AppleScript
+      const title = this.escapeAppleScript(event.title)
+      const message = this.escapeAppleScript(event.message)
+      
+      // Use native macOS notification
+      const soundOption = this.config.sound !== false ? 'sound name "default"' : ''
+      const script = `display notification "${message}" with title "${title}" ${soundOption}`
+      
+      await execAsync(`osascript -e '${script}'`)
       
       this.ctx.logger.info('[notify] System notification sent: %s', event.title)
     } catch (error) {
       this.ctx.logger.error('[notify] Failed to send system notification:', error)
       throw error
     }
+  }
+  
+  private escapeAppleScript(str: string): string {
+    return str
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, '\\n')
   }
 }

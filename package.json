@@ -1,7 +1,7 @@
 {
   "name": "dsh-notify-plugin",
   "description": "Notification plugin for DeepSeek Harness - supports system notifications, webhooks, and WeCom bots",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -42,11 +42,12 @@
   },
   "homepage": "https://github.com/btboys/dsh-notify#readme",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1"
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-settings": ">=0.1.0-rc.0",
+    "@deepseek-ai/schemastery": ">=3.0.0"
   },
   "dependencies": {
     "@deepseek-ai/cosmokit": "^1.8.2",
-    "node-notifier": "^10.0.1",
     "axios": "^1.6.0"
   },
   "devDependencies": {
