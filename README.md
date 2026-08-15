@@ -1,5 +1,8 @@
 # @dsh/plugin-notify
 
+[![GitHub release](https://img.shields.io/github/v/release/btboys/dsh-notify)](https://github.com/btboys/dsh-notify/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在对话完成、暂停、失败、需要授权或确认时自动发送通知。
 
 ## ✨ 功能特性
@@ -13,11 +16,26 @@ DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在对话完成
 
 ## 📦 安装
 
+### 方式一：快速安装（推荐）
+
 ```bash
-npm install @dsh/plugin-notify
+git clone https://github.com/btboys/dsh-notify.git ~/.dsh/plugins/dsh-notify
+cd ~/.dsh/plugins/dsh-notify
+bash install.sh
 ```
 
-依赖项会自动安装：
+安装脚本会自动完成依赖安装、编译和配置。
+
+### 方式二：手动安装
+
+```bash
+git clone https://github.com/btboys/dsh-notify.git ~/.dsh/plugins/dsh-notify
+cd ~/.dsh/plugins/dsh-notify
+npm install
+npm run build
+```
+
+依赖项：
 - `node-notifier` - 系统通知
 - `axios` - HTTP 请求
 
@@ -30,6 +48,7 @@ npm install @dsh/plugin-notify
 ```yaml
 - id: notify
   name: '@dsh/plugin-notify'
+  path: ~/.dsh/plugins/dsh-notify
   config:
     enabled: true
     channels:
