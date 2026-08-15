@@ -1,10 +1,9 @@
 import { Context } from '@deepseek-ai/cordis'
-import { exec, execFile } from 'child_process'
+import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { NotificationAdapter } from './base.js'
 import { NotifyEvent, SystemNotifyConfig } from '../types.js'
 
-const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
 
 /**
@@ -46,9 +45,12 @@ export class SystemNotificationAdapter implements NotificationAdapter {
     try {
       // Escape special characters for AppleScript
       const title = this.escapeAppleScript(event.title)
-      const message = this.escapeAppleScript(event.message)
+      const message = this.escapeAppleScript(event.message, true)
       
-      // Notification via osascript (no `sound name` — it does not ring on macOS)
+      // Notification via osascript (no `sound name` — it does not ring on macOS).
+      // Multi-line content must carry REAL newlines (not the two-char `\n`), or
+      // AppleScript prints them literally. execFile passes the script arg without
+      // shell quoting so real newlines survive intact.
       const script = `display notification "${message}" with title "${title}"`
       
       // Sound via afplay (reliable on every macOS release)
@@ -57,7 +59,7 @@ export class SystemNotificationAdapter implements NotificationAdapter {
         : Promise.resolve()
       
       await Promise.all([
-        execAsync(`osascript -e '${script}'`),
+        execFileAsync('osascript', ['-e', script]),
         soundPromise,
       ])
       
@@ -130,10 +132,19 @@ export class SystemNotificationAdapter implements NotificationAdapter {
     this.ctx.logger.debug('[notify] Played custom sound file: %s', filePath)
   }
   
-  private escapeAppleScript(str: string): string {
-    return str
+  /**
+   * Escape text for embedding in a double-quoted AppleScript string literal.
+   * @param str - the raw text.
+   * @param multiLine - when true, keep real newlines so AppleScript displays
+   *   line breaks; when false collapse them to the two-char `\n` (used for
+   *   single-line fields like the title so it stays on one line).
+   * @returns the escaped AppleScript string content.
+   */
+  private escapeAppleScript(str: string, multiLine = false): string {
+    const normalized = str.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    return normalized
       .replace(/\\/g, '\\\\')
       .replace(/"/g, '\\"')
-      .replace(/\n/g, '\\n')
+      .replace(/\n/g, multiLine ? '\n' : '\\n')
   }
 }
