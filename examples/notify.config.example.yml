@@ -14,6 +14,14 @@ channels:
   system:
     enabled: true
     sound: true
+    # Optional: macOS system sound name (Glass, Ping, Sosumi, Basso, ...)
+    # soundName: Glass
+    # Optional: custom audio file played with the notification (overrides soundName)
+    # soundFile: /path/to/alert.wav
+    # Optional: per-event-type macOS sound names (highest priority)
+    # sounds:
+    #   conversationFailed: Basso
+    #   conversationCompleted: Glass
     # Optional: custom icon path
     # icon: /path/to/icon.png
   
@@ -35,6 +43,16 @@ channels:
     mentions:
       - '@all'
       # - specific_user_id
+
+  # Telegram bot notifications
+  # Setup: create a bot with @BotFather, then find your chat ID
+  # (e.g. via getUpdates after messaging the bot, or @userinfobot)
+  telegram:
+    enabled: false
+    botToken: YOUR_BOT_TOKEN
+    chatId: YOUR_CHAT_ID
+    parseMode: HTML  # HTML | MarkdownV2 | text
+    disableNotification: false
 
 # Event filters - control which events trigger notifications
 events:

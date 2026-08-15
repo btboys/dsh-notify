@@ -40,6 +40,22 @@ export interface SystemNotifyConfig {
   enabled: boolean
   /** Play sound with notification (default: true) */
   sound?: boolean
+  /**
+   * macOS system sound name, e.g. "Glass", "Ping", "Sosumi", "Basso", "default".
+   * Takes effect when `sound` is true (or unset) and `soundFile` is not set.
+   */
+  soundName?: string
+  /**
+   * Path to a custom audio file (e.g. .mp3/.wav/.aiff) to play with the
+   * notification via `afplay`. Overrides `soundName`.
+   */
+  soundFile?: string
+  /**
+   * Per-event-type macOS sound name overrides, e.g.
+   * `{ conversationFailed: 'Basso', conversationCompleted: 'Glass' }`.
+   * Has the highest priority.
+   */
+  sounds?: Partial<Record<NotifyEventType, string>>
   /** Icon path for the notification */
   icon?: string
 }
@@ -73,6 +89,23 @@ export interface WeComNotifyConfig {
 }
 
 /**
+ * Telegram bot notification configuration
+ */
+export interface TelegramNotifyConfig {
+  enabled: boolean
+  /** Telegram bot token from @BotFather */
+  botToken: string
+  /** Target chat ID (user or group) that started the bot */
+  chatId: string
+  /** Message parse mode (default: HTML, safest for rich formatting) */
+  parseMode?: 'HTML' | 'MarkdownV2' | 'text'
+  /** Send silently (no notification sound on the receiver side) */
+  disableNotification?: boolean
+  /** Timeout in milliseconds (default: 5000) */
+  timeout?: number
+}
+
+/**
  * Event filter configuration - which events to notify on
  */
 export interface NotifyEventFilter {
@@ -94,6 +127,7 @@ export interface NotifyPluginConfig {
     system?: SystemNotifyConfig
     webhook?: WebhookNotifyConfig
     wecom?: WeComNotifyConfig
+    telegram?: TelegramNotifyConfig
   }
   /** Event filters - which events trigger notifications */
   events?: NotifyEventFilter

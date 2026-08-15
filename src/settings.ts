@@ -22,6 +22,8 @@ export interface NotifySettings {
   systemEnabled: boolean
   /** Play sound with system notifications. */
   systemSound: boolean
+  /** macOS system sound name (e.g. Glass, Ping, Sosumi, Basso). */
+  systemSoundName: string
   /** Enable webhook notifications. */
   webhookEnabled: boolean
   /** Webhook URL. */
@@ -32,6 +34,14 @@ export interface NotifySettings {
   wecomWebhookUrl: string
   /** WeCom message type: markdown or text. */
   wecomMsgType: 'markdown' | 'text'
+  /** Enable Telegram bot notifications. */
+  telegramEnabled: boolean
+  /** Telegram bot token. */
+  telegramBotToken: string
+  /** Telegram target chat ID. */
+  telegramChatId: string
+  /** Telegram message parse mode. */
+  telegramParseMode: 'HTML' | 'MarkdownV2' | 'text'
   /** Event filters. */
   notifyOnCompleted: boolean
   notifyOnPaused: boolean
@@ -50,11 +60,16 @@ export const NOTIFY_SETTINGS_SCHEMA: z<NotifySettings> = z.object({
   enabled: z.boolean().default(true),
   systemEnabled: z.boolean().default(true),
   systemSound: z.boolean().default(true),
+  systemSoundName: z.string().default(''),
   webhookEnabled: z.boolean().default(false),
   webhookUrl: z.string().default(''),
   wecomEnabled: z.boolean().default(false),
   wecomWebhookUrl: z.string().default(''),
   wecomMsgType: z.union([z.const('markdown'), z.const('text')]).default('markdown'),
+  telegramEnabled: z.boolean().default(false),
+  telegramBotToken: z.string().default(''),
+  telegramChatId: z.string().default(''),
+  telegramParseMode: z.union([z.const('HTML'), z.const('MarkdownV2'), z.const('text')]).default('HTML'),
   notifyOnCompleted: z.boolean().default(true),
   notifyOnPaused: z.boolean().default(true),
   notifyOnFailed: z.boolean().default(true),
@@ -75,6 +90,7 @@ export function settingsToConfig(settings: NotifySettings): NotifyPluginConfig {
       system: {
         enabled: settings.systemEnabled,
         sound: settings.systemSound,
+        soundName: settings.systemSoundName || undefined,
       },
       webhook: {
         enabled: settings.webhookEnabled,
@@ -84,6 +100,12 @@ export function settingsToConfig(settings: NotifySettings): NotifyPluginConfig {
         enabled: settings.wecomEnabled,
         webhookUrl: settings.wecomWebhookUrl,
         msgType: settings.wecomMsgType,
+      },
+      telegram: {
+        enabled: settings.telegramEnabled,
+        botToken: settings.telegramBotToken,
+        chatId: settings.telegramChatId,
+        parseMode: settings.telegramParseMode,
       },
     },
     events: {
@@ -107,11 +129,16 @@ export function configToSettings(config: NotifyPluginConfig): NotifySettings {
     enabled: config.enabled ?? true,
     systemEnabled: config.channels?.system?.enabled ?? true,
     systemSound: config.channels?.system?.sound ?? true,
+    systemSoundName: config.channels?.system?.soundName ?? '',
     webhookEnabled: config.channels?.webhook?.enabled ?? false,
     webhookUrl: config.channels?.webhook?.url ?? '',
     wecomEnabled: config.channels?.wecom?.enabled ?? false,
     wecomWebhookUrl: config.channels?.wecom?.webhookUrl ?? '',
     wecomMsgType: config.channels?.wecom?.msgType ?? 'markdown',
+    telegramEnabled: config.channels?.telegram?.enabled ?? false,
+    telegramBotToken: config.channels?.telegram?.botToken ?? '',
+    telegramChatId: config.channels?.telegram?.chatId ?? '',
+    telegramParseMode: config.channels?.telegram?.parseMode ?? 'HTML',
     notifyOnCompleted: config.events?.conversationCompleted ?? true,
     notifyOnPaused: config.events?.conversationPaused ?? true,
     notifyOnFailed: config.events?.conversationFailed ?? true,

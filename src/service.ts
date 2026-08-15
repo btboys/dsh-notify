@@ -3,11 +3,13 @@ import { NotificationAdapter } from './adapters/base.js'
 import { SystemNotificationAdapter } from './adapters/system.js'
 import { WebhookNotificationAdapter } from './adapters/webhook.js'
 import { WeComNotificationAdapter } from './adapters/wecom.js'
+import { TelegramNotificationAdapter } from './adapters/telegram.js'
 import {
   NotifyEvent,
   NotifyEventType,
   NotifyPluginConfig,
   SystemNotifyConfig,
+  TelegramNotifyConfig,
   WebhookNotifyConfig,
   WeComNotifyConfig,
 } from './types.js'
@@ -21,6 +23,7 @@ const DEFAULT_CONFIG: Required<NotifyPluginConfig> = {
     system: { enabled: true, sound: true, icon: undefined },
     webhook: { enabled: false, url: '', method: 'POST', timeout: 5000, headers: {} },
     wecom: { enabled: false, webhookUrl: '', mentions: [], msgType: 'markdown' },
+    telegram: { enabled: false, botToken: '', chatId: '', parseMode: 'HTML', disableNotification: false, timeout: 5000 },
   },
   events: {
     conversationCompleted: true,
@@ -239,6 +242,14 @@ export class NotifyService extends Service {
           mentions: (userChannels.wecom as any)?.mentions ?? defChannels.wecom!.mentions,
           msgType: (userChannels.wecom as any)?.msgType ?? defChannels.wecom!.msgType,
         },
+        telegram: {
+          enabled: (userChannels.telegram as any)?.enabled ?? defChannels.telegram!.enabled,
+          botToken: (userChannels.telegram as any)?.botToken ?? defChannels.telegram!.botToken,
+          chatId: (userChannels.telegram as any)?.chatId ?? defChannels.telegram!.chatId,
+          parseMode: (userChannels.telegram as any)?.parseMode ?? defChannels.telegram!.parseMode,
+          disableNotification: (userChannels.telegram as any)?.disableNotification ?? defChannels.telegram!.disableNotification,
+          timeout: (userChannels.telegram as any)?.timeout ?? defChannels.telegram!.timeout,
+        },
       },
       events: {
         ...DEFAULT_CONFIG.events,
@@ -287,6 +298,17 @@ export class NotifyService extends Service {
       }
     }
     
+    // Telegram notification adapter
+    if (channels.telegram?.enabled && channels.telegram.botToken && channels.telegram.chatId) {
+      try {
+        const adapter = new TelegramNotificationAdapter(this.ctx, channels.telegram)
+        this.adapters.push(adapter)
+        this.ctx.logger.info('[notify] Telegram notification adapter initialized')
+      } catch (error) {
+        this.ctx.logger.warn('[notify] Failed to initialize Telegram adapter:', error)
+      }
+    }
+    
     if (this.adapters.length === 0) {
       this.ctx.logger.warn('[notify] No notification adapters enabled')
     } else {
@@ -301,32 +323,33 @@ export class NotifyService extends Service {
     // Listen for DSH session events
     // DSH uses session/event to dispatch all session lifecycle events
     
-    this.ctx.on('session/event' as any, async (event: any) => {
-      this.ctx.logger.debug('[notify] Session event received:', event.type)
+    this.ctx.on('session/event' as any, async (session: any, event: any) => {
+      this.ctx.logger.debug('[notify] Session event received:', event?.type)
       
       // Handle turn/end events
-      if (event.type === 'turn/end') {
+      if (event?.type === 'turn/end') {
         const reason = event.data?.reason?.kind || 'unknown'
         const turn = event.data?.turn || 0
         
         this.ctx.logger.info('[notify] Turn ended:', { turn, reason })
         
-        if (reason === 'complete' || reason === 'stop') {
+        if (reason === 'completed' || reason === 'max-tokens') {
           await this.notifyConversationCompleted(
             '对话完成',
             `第 ${turn} 轮对话已完成`,
             { turn, reason }
           )
-        } else if (reason === 'error' || reason === 'failed') {
+        } else if (reason === 'error') {
           await this.notifyConversationFailed(
             '对话失败',
-            `第 ${turn} 轮对话失败: ${reason}`,
-            { turn, reason }
+            `第 ${turn} 轮对话失败`,
+            { turn, reason, error: event.data?.reason?.error }
           )
-        } else if (reason === 'pause' || reason === 'wait') {
+        } else {
+          // aborted / blocked / interrupted
           await this.notifyConversationPaused(
             '对话暂停',
-            `第 ${turn} 轮对话已暂停`,
+            `第 ${turn} 轮对话已暂停 (${reason})`,
             { turn, reason }
           )
         }

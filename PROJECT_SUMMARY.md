@@ -14,9 +14,10 @@
 
 ### 2. 通知适配器
 - ✅ **系统通知适配器** (`SystemNotificationAdapter`)
-  - 使用 `node-notifier` 库
-  - 支持 macOS、Windows、Linux
+  - 使用 macOS 原生 `osascript` 通知
   - 可配置声音和图标
+  - 支持自定义 macOS 声音名（`soundName`）和自定义音频文件（`soundFile`，经 `afplay` 播放）
+  - 支持按事件类型配置不同提示音（`sounds`）
   
 - ✅ **Webhook 通知适配器** (`WebhookNotificationAdapter`)
   - 使用 `axios` 发送 HTTP 请求
@@ -27,6 +28,11 @@
   - 支持 markdown 和 text 消息格式
   - 自动格式化美观的通知内容
   - 支持 @mention 功能
+
+- ✅ **Telegram 机器人适配器** (`TelegramNotificationAdapter`)
+  - 基于 Telegram Bot API `sendMessage`
+  - 支持 HTML / MarkdownV2 富文本和纯文本格式
+  - 支持静默发送（`disableNotification`）
 
 ### 3. 事件系统
 - ✅ 5种事件类型支持：
@@ -183,6 +189,7 @@ await ctx.notify.notifyConversationCompleted('Build', 'Success!')
 6. 实现通知优先级系统
 7. 添加单元测试覆盖率
 8. 创建 DSH 工具集成（如 `tool-notify`）
+9. 系统通知支持 Windows/Linux 原生实现（当前聚焦 macOS）
 
 ## 📄 许可证
 

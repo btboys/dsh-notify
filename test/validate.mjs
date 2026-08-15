@@ -48,6 +48,10 @@ async function validate() {
   const config = ctx.notify.getConfig()
   console.log('  Has enabled:', 'enabled' in config)
   console.log('  Has channels:', 'channels' in config)
+  console.log('  Has system channel:', !!config.channels.system)
+  console.log('  Has webhook channel:', !!config.channels.webhook)
+  console.log('  Has wecom channel:', !!config.channels.wecom)
+  console.log('  Has telegram channel:', !!config.channels.telegram)
   console.log('  Has events:', 'events' in config)
   console.log('  Title prefix:', config.titlePrefix)
   
@@ -71,6 +75,7 @@ async function validate() {
       system: { enabled: false },
       webhook: { enabled: false, url: '' },
       wecom: { enabled: false, webhookUrl: '' },
+      telegram: { enabled: false, botToken: '', chatId: '' },
     }
   })
   

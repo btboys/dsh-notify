@@ -14,12 +14,18 @@
       system:
         enabled: true
         sound: true
+        soundName: Glass
       webhook:
         enabled: false
         url: ''
       wecom:
         enabled: false
         webhookUrl: ''
+      telegram:
+        enabled: false
+        botToken: ''
+        chatId: ''
+        parseMode: HTML
     events:
       conversationCompleted: true
       conversationPaused: true

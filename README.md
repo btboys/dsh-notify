@@ -7,9 +7,10 @@ DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在对话完成
 
 ## ✨ 功能特性
 
-- 🖥️ **系统通知** - 桌面原生通知（macOS Notification Center / Windows Toast / Linux notify-osd）
+- 🖥️ **系统通知** - 桌面原生通知（macOS Notification Center / Windows Toast / Linux notify-osd），支持自定义提示音（macOS 声音名 / 自定义音频文件 / 按事件类型区分）
 - 🔗 **Webhook 通知** - 自定义 HTTP webhook，支持任意 endpoint
 - 💼 **企业微信机器人** - 企业微信群机器人通知，支持 markdown 格式
+- ✈️ **Telegram 机器人** - Telegram Bot API 通知，支持 HTML / MarkdownV2 富文本
 - 🎯 **事件过滤** - 按事件类型选择性启用/禁用通知
 - ⚙️ **灵活配置** - 支持 YAML/JSON 配置文件和运行时配置
 - 🔌 **Cordis 集成** - 完美融入 DSH 的 Cordis 插件系统
@@ -36,8 +37,8 @@ npm run build
 ```
 
 依赖项：
-- `node-notifier` - 系统通知
-- `axios` - HTTP 请求
+- `axios` - HTTP 请求（webhook / 企业微信 / Telegram）
+- 系统通知基于 macOS 原生 `osascript`（无需额外依赖）
 
 ## 🚀 快速开始
 
@@ -82,8 +83,13 @@ channels:
   # 桌面系统通知
   system:
     enabled: true
-    sound: true              # 播放提示音
-    icon: /path/to/icon.png  # 可选：自定义图标
+    sound: true                   # 播放提示音
+    soundName: Glass              # 可选：macOS 系统声音名（Glass/Ping/Sosumi/Basso 等）
+    soundFile: /path/to/alert.wav # 可选：自定义音频文件（优先级高于 soundName）
+    sounds:                       # 可选：按事件类型指定 macOS 声音名（优先级最高）
+      conversationFailed: Basso
+      conversationCompleted: Glass
+    icon: /path/to/icon.png       # 可选：自定义图标
   
   # Webhook 通知
   webhook:
@@ -104,6 +110,14 @@ channels:
       # - user_id_1
       # - user_id_2
 
+  # Telegram 机器人
+  telegram:
+    enabled: false
+    botToken: '123456:ABC-DEF...'  # @BotFather 创建的机器人 token
+    chatId: '123456789'            # 目标聊天 ID（用户或群组）
+    parseMode: HTML                # 解析模式：HTML | MarkdownV2 | text
+    disableNotification: false     # 静默发送（接收端不响铃）
+
 # 事件过滤器
 events:
   conversationCompleted: true      # 对话完成
@@ -123,11 +137,19 @@ titlePrefix: '[DSH]'
 | `enabled` | boolean | `true` | 是否启用整个插件 |
 | `channels.system.enabled` | boolean | `true` | 启用系统通知 |
 | `channels.system.sound` | boolean | `true` | 播放提示音 |
+| `channels.system.soundName` | string | `''` | macOS 系统声音名（如 `Glass`、`Ping`、`Sosumi`） |
+| `channels.system.soundFile` | string | `''` | 自定义音频文件路径（经 `afplay` 播放，优先级高于 `soundName`） |
+| `channels.system.sounds` | object | `{}` | 按事件类型指定 macOS 声音名（优先级最高） |
 | `channels.webhook.enabled` | boolean | `false` | 启用 webhook 通知 |
 | `channels.webhook.url` | string | `''` | Webhook URL（必需） |
 | `channels.wecom.enabled` | boolean | `false` | 启用企业微信通知 |
 | `channels.wecom.webhookUrl` | string | `''` | 企业微信 webhook URL（必需） |
 | `channels.wecom.msgType` | string | `'markdown'` | 消息类型：`markdown` 或 `text` |
+| `channels.telegram.enabled` | boolean | `false` | 启用 Telegram 通知 |
+| `channels.telegram.botToken` | string | `''` | Telegram 机器人 token（必需） |
+| `channels.telegram.chatId` | string | `''` | 目标聊天 ID（必需） |
+| `channels.telegram.parseMode` | string | `'HTML'` | 解析模式：`HTML`、`MarkdownV2` 或 `text` |
+| `channels.telegram.disableNotification` | boolean | `false` | 静默发送 |
 | `events.*` | boolean | `true` | 各事件类型的开关 |
 | `titlePrefix` | string | `'[DSH]'` | 所有通知标题的前缀 |
 
@@ -206,6 +228,34 @@ The code generation task has been finished successfully.
 - duration: 5m 30s
 - filesModified: 3
 ```
+
+## ✈️ Telegram 机器人设置
+
+1. 在 Telegram 中与 [@BotFather](https://t.me/BotFather) 对话，发送 `/newbot` 创建机器人，复制得到的 token（格式 `123456:ABC-DEF...`）
+2. 与你的机器人开始聊天（或把它加进一个群组）
+3. 获取 chat ID：
+   - 简单方式：给机器人发一条消息，然后访问 `https://api.telegram.org/bot<你的token>/getUpdates`，返回 JSON 中的 `message.chat.id` 即为你需要的 ID
+   - 或在 Telegram 中 @userinfobot 获取
+4. 在配置中填入 `botToken` 和 `chatId`，将 `enabled` 设为 `true`
+
+### Telegram 消息格式示例
+
+默认使用 HTML 解析模式，通知会格式化为富文本：
+
+```html
+<b>🔔 [DSH] Agent Task Completed</b>
+
+The code generation task has been finished successfully.
+
+类型: ✅ 对话完成
+时间: 2024/1/15 14:30:25
+
+<b>详细信息</b>:
+- taskId: abc123
+- duration: 5m 30s
+```
+
+> 💡 `parseMode` 可选 `HTML`（推荐，转义简单）、`MarkdownV2`（需完整转义）或 `text`（纯文本）。
 
 ## 🔗 Webhook Payload 格式
 

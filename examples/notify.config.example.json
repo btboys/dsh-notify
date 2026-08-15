@@ -3,7 +3,11 @@
   "channels": {
     "system": {
       "enabled": true,
-      "sound": true
+      "sound": true,
+      "soundName": "Glass",
+      "sounds": {
+        "conversationFailed": "Basso"
+      }
     },
     "webhook": {
       "enabled": false,
@@ -19,6 +23,13 @@
       "webhookUrl": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_WEBHOOK_KEY",
       "msgType": "markdown",
       "mentions": ["@all"]
+    },
+    "telegram": {
+      "enabled": false,
+      "botToken": "YOUR_BOT_TOKEN",
+      "chatId": "YOUR_CHAT_ID",
+      "parseMode": "HTML",
+      "disableNotification": false
     }
   },
   "events": {
