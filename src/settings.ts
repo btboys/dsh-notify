@@ -75,7 +75,7 @@ export const NOTIFY_SETTINGS_SCHEMA: z<NotifySettings> = z.object({
   notifyOnFailed: z.boolean().default(true),
   notifyOnAuthorization: z.boolean().default(true),
   notifyOnConfirmation: z.boolean().default(true),
-  titlePrefix: z.string().default('[DSH]'),
+  titlePrefix: z.string().default(''),
 })
 
 /**
@@ -144,7 +144,7 @@ export function configToSettings(config: NotifyPluginConfig): NotifySettings {
     notifyOnFailed: config.events?.conversationFailed ?? true,
     notifyOnAuthorization: config.events?.authorizationRequired ?? true,
     notifyOnConfirmation: config.events?.confirmationRequired ?? true,
-    titlePrefix: config.titlePrefix ?? '[DSH]',
+    titlePrefix: config.titlePrefix ?? '',
   }
 }
 
