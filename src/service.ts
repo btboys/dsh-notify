@@ -351,22 +351,24 @@ export class NotifyService extends Service {
         // Extract a rich summary of this turn from the session log
         const summary = this.extractTurnSummary(session, turn)
         
-        // Title: "[workspace] ✅ 状态标签" — workspace prefix when known,
-        // falling back to just the state label.
+        // Title: "✅ [workspace] 对话完成" — icon first, workspace when known,
+        // then the state label; without a workspace it becomes "✅ 对话完成".
         const ws = summary.details.workspace
-        const title = (label: string) => ws ? `[${ws}] ${label}` : label
+        const title = (icon: string, label: string) => ws
+          ? `${icon} [${ws}] ${label}`
+          : `${icon} ${label}`
         
         if (reason === 'completed' || reason === 'max-tokens') {
           debug('notifying conversation completed')
           await this.notifyConversationCompleted(
-            title('✅ 对话完成'),
+            title('✅', '对话完成'),
             summary.message,
             { turn, reason, ...summary.details }
           )
         } else if (reason === 'error') {
           debug('notifying conversation failed')
           await this.notifyConversationFailed(
-            title('❌ 对话失败'),
+            title('❌', '对话失败'),
             `${summary.message}\n错误: ${this.extractErrorMessage(event.data?.reason?.error)}`,
             { turn, reason, ...summary.details, error: event.data?.reason?.error }
           )
@@ -374,7 +376,7 @@ export class NotifyService extends Service {
           // aborted / blocked / interrupted
           debug('notifying conversation paused')
           await this.notifyConversationPaused(
-            title('⏸️ 对话暂停'),
+            title('⏸️', '对话暂停'),
             `${summary.message}\n原因: ${reason}`,
             { turn, reason, ...summary.details }
           )
