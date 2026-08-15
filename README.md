@@ -1,23 +1,35 @@
-# @dsh/plugin-notify
+# dsh-notify-plugin
 
+[![npm version](https://img.shields.io/npm/v/dsh-notify-plugin)](https://www.npmjs.com/package/dsh-notify-plugin)
 [![GitHub release](https://img.shields.io/github/v/release/btboys/dsh-notify)](https://github.com/btboys/dsh-notify/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在对话完成、暂停、失败、需要授权或确认时自动发送通知。
+DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在**对话完成、暂停、失败、向你提问、需要授权或确认**时自动发送通知。
 
 ## ✨ 功能特性
 
-- 🖥️ **系统通知** - 桌面原生通知（macOS Notification Center / Windows Toast / Linux notify-osd），支持自定义提示音（macOS 声音名 / 自定义音频文件 / 按事件类型区分）
+- 🖥️ **系统通知** - 桌面原生通知，支持自定义提示音（macOS 声音名 / 自定义音频文件 / 按事件类型区分）
 - 🔗 **Webhook 通知** - 自定义 HTTP webhook，支持任意 endpoint
 - 💼 **企业微信机器人** - 企业微信群机器人通知，支持 markdown 格式
 - ✈️ **Telegram 机器人** - Telegram Bot API 通知，支持 HTML / MarkdownV2 富文本
+- 📝 **丰富内容** - 通知包含工作区名、对话标题、用户问题、助手回复摘要、使用工具、轮次与耗时
+- ❓ **提问提醒** - Agent 通过 `ask_user_question` 提问时立即通知
+- 🔐 **授权提醒** - Agent 请求沙箱权限提升时立即通知
 - 🎯 **事件过滤** - 按事件类型选择性启用/禁用通知
 - ⚙️ **灵活配置** - 支持 YAML/JSON 配置文件和运行时配置
 - 🔌 **Cordis 集成** - 完美融入 DSH 的 Cordis 插件系统
 
 ## 📦 安装
 
-### 方式一：快速安装（推荐）
+### 方式一：从 NPM 安装（推荐）
+
+```bash
+npm install dsh-notify-plugin
+```
+
+然后将其挂载到 DSH（见下方"快速开始"）。
+
+### 方式二：GitHub 快速安装
 
 ```bash
 git clone https://github.com/btboys/dsh-notify.git ~/.dsh/plugins/dsh-notify
@@ -27,7 +39,7 @@ bash install.sh
 
 安装脚本会自动完成依赖安装、编译和配置。
 
-### 方式二：手动安装
+### 方式三：手动安装（源码编译）
 
 ```bash
 git clone https://github.com/btboys/dsh-notify.git ~/.dsh/plugins/dsh-notify
@@ -38,39 +50,50 @@ npm run build
 
 依赖项：
 - `axios` - HTTP 请求（webhook / 企业微信 / Telegram）
-- 系统通知基于 macOS 原生 `osascript`（无需额外依赖）
+- 系统通知基于 macOS 原生 `osascript`（无额外依赖）
 
 ## 🚀 快速开始
 
-### 1. 在 DSH Agent Preset 中启用
+### 1. 在 DSH Host 平面挂载插件
 
-创建或编辑你的 agent preset 配置文件（例如 `~/.dsh/presets/my-agent.cordis.yml`）：
+> ⚠️ 必须在 **host 平面**（`~/.dsh/profiles/web/cordis.patch.yml`）挂载，而不是 agent preset。Host 挂载才能注册 settings 命名空间并正确监听 `session/event`。
+
+编辑 `~/.dsh/profiles/web/cordis.patch.yml`：
 
 ```yaml
-- id: notify
-  name: '@dsh/plugin-notify'
-  path: ~/.dsh/plugins/dsh-notify
-  config:
-    enabled: true
-    channels:
-      system:
+- insert:
+    - id: notify
+      name: '/绝对/路径/到/dsh-notify/lib/index.js'
+      config:
         enabled: true
-        sound: true
-      wecom:
-        enabled: true
-        webhookUrl: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
-        msgType: markdown
-        mentions:
-          - '@all'
-    events:
-      conversationCompleted: true
-      conversationFailed: true
-      authorizationRequired: true
+        channels:
+          system:
+            enabled: true
+            sound: true
+          wecom:
+            enabled: true
+            webhookUrl: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
+            msgType: markdown
+            mentions:
+              - '@all'
+        events:
+          conversationCompleted: true
+          conversationFailed: true
+          authorizationRequired: true
 ```
+
+> 📌 **关键要点**：
+> - 顶层必须是 `- insert:` 包裹（PatchOptions 格式），不能直接写 entry
+> - `name` 要用**绝对路径指向 `lib/index.js`**（Node ESM 无法 import 目录）
+> - 从 NPM 安装时，`name` 填包名 `dsh-notify-plugin`
 
 ### 2. 重启 DSH
 
-重新加载配置后，插件会自动监听 DSH 事件并发送通知。
+```
+Ctrl+C 停止 → dsh web 重启
+```
+
+重新加载配置后，插件会自动监听 DSH 事件并发送通知。运行一个对话即可验证。
 
 ## ⚙️ 配置选项
 
@@ -126,8 +149,8 @@ events:
   authorizationRequired: true      # 需要授权
   confirmationRequired: true       # 需要确认
 
-# 通知标题前缀
-titlePrefix: '[DSH]'
+# 通知标题前缀（默认空，不加前缀；可设为如 '[MyApp]' 来统一加上产品标签）
+titlePrefix: ''
 ```
 
 ### 配置项说明
@@ -138,8 +161,8 @@ titlePrefix: '[DSH]'
 | `channels.system.enabled` | boolean | `true` | 启用系统通知 |
 | `channels.system.sound` | boolean | `true` | 播放提示音 |
 | `channels.system.soundName` | string | `''` | macOS 系统声音名（如 `Glass`、`Ping`、`Sosumi`） |
-| `channels.system.soundFile` | string | `''` | 自定义音频文件路径（经 `afplay` 播放，优先级高于 `soundName`） |
-| `channels.system.sounds` | object | `{}` | 按事件类型指定 macOS 声音名（优先级最高） |
+| `channels.system.soundFile` | string | `''` | 自定义音频文件路径（经 `afplay` 播放） |
+| `channels.system.sounds` | object | `{}` | 按事件类型指定 macOS 声音名 |
 | `channels.webhook.enabled` | boolean | `false` | 启用 webhook 通知 |
 | `channels.webhook.url` | string | `''` | Webhook URL（必需） |
 | `channels.wecom.enabled` | boolean | `false` | 启用企业微信通知 |
@@ -151,17 +174,33 @@ titlePrefix: '[DSH]'
 | `channels.telegram.parseMode` | string | `'HTML'` | 解析模式：`HTML`、`MarkdownV2` 或 `text` |
 | `channels.telegram.disableNotification` | boolean | `false` | 静默发送 |
 | `events.*` | boolean | `true` | 各事件类型的开关 |
-| `titlePrefix` | string | `'[DSH]'` | 所有通知标题的前缀 |
+| `titlePrefix` | string | `''` | 所有通知标题的前缀（默认不加） |
 
 ## 🎯 支持的事件类型
 
-| 事件 | 描述 | 触发场景 |
-|------|------|----------|
-| `conversationCompleted` | 对话正常完成 | Agent 成功完成任务 |
-| `conversationPaused` | 对话暂停 | 用户主动暂停或等待输入 |
-| `conversationFailed` | 对话失败 | Agent 遇到错误或异常 |
-| `authorizationRequired` | 需要授权 | Agent 请求沙箱权限提升 |
-| `confirmationRequired` | 需要确认 | Agent 需要用户确认操作 |
+| 事件 | 通知标题 | 触发场景 |
+|------|---------|----------|
+| `conversationCompleted` | `✅ [工作区] 对话完成` | Agent 成功完成任务（`turn/end` reason=completed） |
+| `conversationPaused` | `⏸️ [工作区] 对话暂停` | Agent 被中断 / 等待输入（`turn/end` reason=aborted/blocked） |
+| `conversationFailed` | `❌ [工作区] 对话失败` | Agent 遇到错误（`turn/end` reason=error） |
+| `confirmationRequired` | `❓ [工作区] 需要回答` | Agent 通过 `ask_user_question` 向你提问 |
+| `authorizationRequired` | `🔐 [工作区] 需要授权` | Agent 请求沙箱权限提升（`approval/asked`） |
+
+### 丰富内容示例
+
+系统通知正文会自动提取对话上下文，例如：
+
+```
+💬 帮我读一下当前目录，看看项目结构
+🤖 目录里有 src、lib、test 等目录…
+🔧 工具: bash×2, read
+📊 第 2 轮 · 2 步 · 60s · 📝 开发通知插件 · 📁 notify
+```
+
+- 💬 用户最后的问题
+- 🤖 助手回复摘要
+- 🔧 使用的工具（含次数）
+- 📊 轮次、步数、耗时、对话标题、工作区
 
 ## 💻 编程式使用
 
@@ -169,7 +208,7 @@ titlePrefix: '[DSH]'
 
 ```typescript
 import { Context } from '@deepseek-ai/cordis'
-import notifyPlugin from '@dsh/plugin-notify'
+import notifyPlugin from 'dsh-notify-plugin'
 
 export default function myPlugin(ctx: Context) {
   // 注册 notify 插件
@@ -216,17 +255,12 @@ export default function myPlugin(ctx: Context) {
 企业微信通知会自动格式化为美观的 markdown：
 
 ```markdown
-## [DSH] Agent Task Completed
+## ✅ [notify] 对话完成
 
-The code generation task has been finished successfully.
-
-**类型**: ✅ 对话完成
-**时间**: 2024/1/15 14:30:25
-
-**详细信息**:
-- taskId: abc123
-- duration: 5m 30s
-- filesModified: 3
+💬 帮我读一下当前目录，看看项目结构
+🤖 目录里有 src、lib、test 等目录…
+🔧 工具: bash×2, read
+📊 第 2 轮 · 2 步 · 60s · 📝 开发通知插件
 ```
 
 ## ✈️ Telegram 机器人设置
@@ -243,16 +277,12 @@ The code generation task has been finished successfully.
 默认使用 HTML 解析模式，通知会格式化为富文本：
 
 ```html
-<b>🔔 [DSH] Agent Task Completed</b>
+<b>✅ [notify] 对话完成</b>
 
-The code generation task has been finished successfully.
-
-类型: ✅ 对话完成
-时间: 2024/1/15 14:30:25
-
-<b>详细信息</b>:
-- taskId: abc123
-- duration: 5m 30s
+💬 帮我读一下当前目录，看看项目结构
+🤖 目录里有 src、lib、test 等目录…
+🔧 工具: bash×2, read
+📊 第 2 轮 · 2 步 · 60s · 📝 开发通知插件
 ```
 
 > 💡 `parseMode` 可选 `HTML`（推荐，转义简单）、`MarkdownV2`（需完整转义）或 `text`（纯文本）。
@@ -264,11 +294,14 @@ Webhook 会收到以下 JSON payload：
 ```json
 {
   "type": "conversationCompleted",
-  "title": "[DSH] Task Finished",
-  "message": "Your task has been completed",
+  "title": "✅ [notify] 对话完成",
+  "message": "💬 帮我读一下当前目录…\n🤖 目录里有 src、lib、test…",
   "metadata": {
-    "taskId": "abc123",
-    "duration": "5m 30s"
+    "workspace": "notify",
+    "title": "开发通知插件",
+    "tools": ["bash", "read"],
+    "turn": 2,
+    "durationMs": 60000
   },
   "timestamp": 1705312225000
 }
@@ -287,18 +320,19 @@ DSH Web 界面有「插件配置」页面，可以在浏览器中编辑插件配
 编辑 `~/.dsh/profiles/web/cordis.patch.yml`：
 
 ```yaml
-- id: notify
-  name: '/绝对/路径/到/dsh-notify'
-  config:
-    enabled: true
-    channels:
-      system:
+- insert:
+    - id: notify
+      name: '/绝对/路径/到/dsh-notify/lib/index.js'
+      config:
         enabled: true
-        sound: true
-    events:
-      conversationCompleted: true
-      conversationFailed: true
-      authorizationRequired: true
+        channels:
+          system:
+            enabled: true
+            sound: true
+        events:
+          conversationCompleted: true
+          conversationFailed: true
+          authorizationRequired: true
 ```
 
 > ⚠️ agent preset 挂载的插件无法注册 settings 命名空间（host 平面才可以）。
