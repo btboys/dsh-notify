@@ -338,8 +338,19 @@ export class NotifyService extends Service {
     // Listener signature: (session, event)
     
     this.ctx.on('session/event' as any, async (session: any, event: any) => {
-      debug('session/event received, type=', event?.type, 'reason=', event?.data?.reason?.kind)
+      debug('session/event received, type=', event?.type)
       this.ctx.logger.debug('[notify] Session event received:', event?.type)
+      
+      // Handle tool/call events — the model pausing to ask the user, request
+      // confirmation, or request authorization surfaces as a tool call.
+      if (event?.type === 'tool/call') {
+        const name = event.data?.name || ''
+        // "ask_user_question" requires the human to answer before continuing.
+        if (name === 'ask_user_question') {
+          await this.handleUserQuestion(session, event)
+        }
+        return
+      }
       
       // Handle turn/end events
       if (event?.type === 'turn/end') {
@@ -406,6 +417,56 @@ export class NotifyService extends Service {
     })
     
     debug('event listeners registered')
+  }
+  
+  /**
+   * Handle an `ask_user_question` tool call: the model paused the turn and is
+   * waiting for the human to answer a question. Emits a "需要确认" notification
+   * with the question text, options, and workspace context.
+   * @param session - the Session instance.
+   * @param event - the tool/call event.
+   */
+  private async handleUserQuestion(session: any, event: any): Promise<void> {
+    this.ctx.logger.debug('[notify] ask_user_question tool call received')
+    
+    // Parse the question payload from tool arguments.
+    const args = this.parseToolArguments(event.data?.arguments)
+    const questions: Array<{ question?: string; header?: string; options?: Array<{ label?: string }> }> =
+      Array.isArray(args?.questions) ? args.questions : []
+    
+    const first = questions[0]
+    const questionText = first?.question || '请回答以下问题'
+    const header = first?.header
+    const options = (first?.options || []).map((o: { label?: string }) => o.label).filter(Boolean).join(' / ')
+    
+    // Build a rich message with workspace context.
+    const lines: string[] = []
+    if (header) lines.push(`📌 ${header}`)
+    lines.push(`❓ ${questionText}`)
+    if (options) lines.push(`🔘 选项: ${options}`)
+    
+    // Workspace context for the title.
+    const cwd: string | undefined = session?.header?.cwd
+    const workspace = cwd ? cwd.split('/').filter(Boolean).pop() || cwd : undefined
+    
+    await this.notifyConfirmationRequired(
+      workspace ? `❓ [${workspace}] 需要回答` : '❓ 需要回答',
+      lines.join('\n'),
+      { questions: args?.questions }
+    )
+    this.ctx.logger.debug('[notify] user question notification sent')
+  }
+  
+  /**
+   * Best-effort parse of a tool call's `arguments` JSON string.
+   */
+  private parseToolArguments(raw: any): { questions?: any[] } {
+    if (typeof raw !== 'string' || !raw) return {}
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return {}
+    }
   }
   
   /**
