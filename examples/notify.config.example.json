@@ -1,0 +1,32 @@
+{
+  "enabled": true,
+  "channels": {
+    "system": {
+      "enabled": true,
+      "sound": true
+    },
+    "webhook": {
+      "enabled": false,
+      "url": "https://your-webhook-endpoint.com/notify",
+      "method": "POST",
+      "timeout": 5000,
+      "headers": {
+        "Authorization": "Bearer your-secret-token"
+      }
+    },
+    "wecom": {
+      "enabled": false,
+      "webhookUrl": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_WEBHOOK_KEY",
+      "msgType": "markdown",
+      "mentions": ["@all"]
+    }
+  },
+  "events": {
+    "conversationCompleted": true,
+    "conversationPaused": true,
+    "conversationFailed": true,
+    "authorizationRequired": true,
+    "confirmationRequired": true
+  },
+  "titlePrefix": "[DSH]"
+}

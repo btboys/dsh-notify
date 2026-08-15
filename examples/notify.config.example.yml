@@ -1,0 +1,48 @@
+# DSH Notify Plugin Configuration Example
+# 
+# Copy this file to your DSH configuration directory and customize as needed.
+# Typical locations:
+# - ~/.dsh/notify.config.yml
+# - ./dsh-notify.config.yml (project-level)
+
+# Enable or disable the entire plugin
+enabled: true
+
+# Notification channels configuration
+channels:
+  # Desktop system notifications
+  system:
+    enabled: true
+    sound: true
+    # Optional: custom icon path
+    # icon: /path/to/icon.png
+  
+  # HTTP Webhook notifications
+  webhook:
+    enabled: false
+    url: https://your-webhook-endpoint.com/notify
+    method: POST
+    timeout: 5000
+    headers:
+      Authorization: Bearer your-secret-token
+      X-Custom-Header: custom-value
+  
+  # Enterprise WeChat (WeCom) bot notifications
+  wecom:
+    enabled: false
+    webhookUrl: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_WEBHOOK_KEY
+    msgType: markdown  # or 'text'
+    mentions:
+      - '@all'
+      # - specific_user_id
+
+# Event filters - control which events trigger notifications
+events:
+  conversationCompleted: true
+  conversationPaused: true
+  conversationFailed: true
+  authorizationRequired: true
+  confirmationRequired: true
+
+# Optional prefix for all notification titles
+titlePrefix: '[DSH]'

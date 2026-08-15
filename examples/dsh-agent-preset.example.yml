@@ -1,0 +1,29 @@
+# DSH Agent Preset with Notify Plugin
+# 
+# Add this to your DSH configuration to enable notifications for an agent.
+# Example: ~/.dsh/presets/with-notify.cordis.yml
+
+# Include the notify plugin
+- id: notify
+  name: '@dsh/plugin-notify'
+  # Replace with your actual plugin path after cloning
+  path: ~/.dsh/plugins/dsh-notify
+  config:
+    enabled: true
+    channels:
+      system:
+        enabled: true
+        sound: true
+      webhook:
+        enabled: false
+        url: ''
+      wecom:
+        enabled: false
+        webhookUrl: ''
+    events:
+      conversationCompleted: true
+      conversationPaused: true
+      conversationFailed: true
+      authorizationRequired: true
+      confirmationRequired: true
+    titlePrefix: '[DSH]'

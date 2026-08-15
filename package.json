@@ -1,0 +1,49 @@
+{
+  "name": "@dsh/plugin-notify",
+  "description": "Notification plugin for DeepSeek Harness - supports system notifications, webhooks, and WeCom bots",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "keywords": ["dsh", "plugin", "notification", "webhook", "wecom", "deepseek-harness"],
+  "author": "btboys",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/btboys/dsh-notify.git"
+  },
+  "bugs": {
+    "url": "https://github.com/btboys/dsh-notify/issues"
+  },
+  "homepage": "https://github.com/btboys/dsh-notify#readme",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dependencies": {
+    "@deepseek-ai/cosmokit": "^1.8.2",
+    "node-notifier": "^10.0.1",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "@types/node": "^20.10.0"
+  }
+}
