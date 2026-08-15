@@ -352,6 +352,13 @@ export class NotifyService extends Service {
         return
       }
       
+      // Handle approval/asked events — the model is requesting authorization
+      // to perform a sensitive operation.
+      if (event?.type === 'approval/asked') {
+        await this.handleApprovalRequest(session, event)
+        return
+      }
+      
       // Handle turn/end events
       if (event?.type === 'turn/end') {
         const reason = event.data?.reason?.kind || 'unknown'
@@ -460,13 +467,45 @@ export class NotifyService extends Service {
   /**
    * Best-effort parse of a tool call's `arguments` JSON string.
    */
-  private parseToolArguments(raw: any): { questions?: any[] } {
+  private parseToolArguments(raw: any): any {
     if (typeof raw !== 'string' || !raw) return {}
     try {
       return JSON.parse(raw)
     } catch {
       return {}
     }
+  }
+  
+  /**
+   * Handle an `approval/asked` session event: the model is requesting
+   * authorization to perform a sensitive operation. Emits a "需要授权"
+   * notification with the tool name, reason, and workspace context.
+   * @param session - the Session instance.
+   * @param event - the approval/asked event.
+   */
+  private async handleApprovalRequest(session: any, event: any): Promise<void> {
+    this.ctx.logger.debug('[notify] approval/asked event received')
+    
+    const toolName = event.data?.toolName || '未知操作'
+    const reason = event.data?.reason || '需要您的授权才能继续'
+    const callId = event.data?.callId
+    
+    // Workspace context for the title.
+    const cwd: string | undefined = session?.header?.cwd
+    const workspace = cwd ? cwd.split('/').filter(Boolean).pop() || cwd : undefined
+    
+    // Build a rich message.
+    const lines: string[] = []
+    lines.push(`🔐 操作: ${toolName}`)
+    if (reason) lines.push(`📝 原因: ${reason}`)
+    if (callId) lines.push(`🆔 ${callId}`)
+    
+    await this.notifyAuthorizationRequired(
+      workspace ? `🔐 [${workspace}] 需要授权` : '🔐 需要授权',
+      lines.join('\n'),
+      { toolName, reason, callId }
+    )
+    this.ctx.logger.debug('[notify] approval request notification sent')
   }
   
   /**
