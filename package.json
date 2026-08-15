@@ -1,7 +1,7 @@
 {
-  "name": "@dsh/plugin-notify",
+  "name": "dsh-notify-plugin",
   "description": "Notification plugin for DeepSeek Harness - supports system notifications, webhooks, and WeCom bots",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -23,7 +23,14 @@
     "build": "tsc",
     "dev": "tsc --watch"
   },
-  "keywords": ["dsh", "plugin", "notification", "webhook", "wecom", "deepseek-harness"],
+  "keywords": [
+    "dsh",
+    "plugin",
+    "notification",
+    "webhook",
+    "wecom",
+    "deepseek-harness"
+  ],
   "author": "btboys",
   "license": "MIT",
   "repository": {
