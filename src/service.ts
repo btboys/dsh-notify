@@ -346,27 +346,30 @@ export class NotifyService extends Service {
         
         this.ctx.logger.info('[notify] Turn ended:', { turn, reason })
         
+        // Extract a rich summary of this turn from the session log
+        const summary = this.extractTurnSummary(session, turn)
+        
         if (reason === 'completed' || reason === 'max-tokens') {
           debug('notifying conversation completed')
           await this.notifyConversationCompleted(
-            '对话完成',
-            `第 ${turn} 轮对话已完成`,
-            { turn, reason }
+            '✅ 对话完成',
+            summary.message,
+            { turn, reason, ...summary.details }
           )
         } else if (reason === 'error') {
           debug('notifying conversation failed')
           await this.notifyConversationFailed(
-            '对话失败',
-            `第 ${turn} 轮对话失败`,
-            { turn, reason, error: event.data?.reason?.error }
+            '❌ 对话失败',
+            `${summary.message}\n错误: ${this.extractErrorMessage(event.data?.reason?.error)}`,
+            { turn, reason, ...summary.details, error: event.data?.reason?.error }
           )
         } else {
           // aborted / blocked / interrupted
           debug('notifying conversation paused')
           await this.notifyConversationPaused(
-            '对话暂停',
-            `第 ${turn} 轮对话已暂停 (${reason})`,
-            { turn, reason }
+            '⏸️ 对话暂停',
+            `${summary.message}\n原因: ${reason}`,
+            { turn, reason, ...summary.details }
           )
         }
       }
@@ -401,6 +404,139 @@ export class NotifyService extends Service {
    */
   private shouldNotify(eventType: NotifyEventType): boolean {
     return this.config.events[eventType] ?? false
+  }
+  
+  /**
+   * Build a rich human-readable summary of a turn from the session log:
+   * the user's last question, the assistant's reply excerpt, the tools used,
+   * the conversation title, and the workspace.
+   * @param session - the Session instance passed to the session/event listener.
+   * @param turn - the turn number that just ended.
+   * @returns a display message plus structured details for metadata.
+   */
+  private extractTurnSummary(session: any, turn: number): {
+    message: string
+    details: { userPrompt?: string; reply?: string; tools?: string[]; steps?: number; durationMs?: number; title?: string; workspace?: string; sessionId?: string }
+  } {
+    const details: { userPrompt?: string; reply?: string; tools?: string[]; steps?: number; durationMs?: number; title?: string; workspace?: string; sessionId?: string } = {}
+    const log: any[] = Array.isArray(session?.log) ? session.log : []
+    
+    // Filter events belonging to this turn (and tolerate turn-less logs)
+    const turnEvents = log.filter(e => e?.type === 'turn/start' || e?.data?.turn === turn || e?.data?.turn === undefined)
+    
+    // Last user message (find the user's actual question, skipping system prompts)
+    let userPrompt = ''
+    for (const e of turnEvents) {
+      if (e?.type !== 'user/message') continue
+      const text = this.extractText(e.data?.content)
+      if (text && text.length > 20 && !text.startsWith('<system-reminder>')) {
+        userPrompt = text
+      }
+    }
+    
+    // Last assistant message
+    let reply = ''
+    for (const e of turnEvents) {
+      if (e?.type !== 'assistant/message') continue
+      const text = this.extractText(e.data?.message?.content)
+      if (text) reply = text
+    }
+    
+    // Tools used (unique names, with counts)
+    const toolCounts = new Map<string, number>()
+    let steps = 0
+    let turnStartTime: number | undefined
+    for (const e of turnEvents) {
+      if (e?.type === 'tool/call' && e.data?.name) {
+        toolCounts.set(e.data.name, (toolCounts.get(e.data.name) ?? 0) + 1)
+      }
+      if (e?.type === 'step/start') steps++
+      if (e?.type === 'turn/start' && typeof e.time === 'number') turnStartTime = e.time
+    }
+    
+    const tools = [...toolCounts.entries()]
+      .map(([name, count]) => count > 1 ? `${name}×${count}` : name)
+    
+    // Conversation title: from the latest session/title event
+    let title = ''
+    for (const e of log) {
+      if (e?.type === 'session/title' && e.data?.title) title = e.data.title
+    }
+    
+    // Workspace: basename of the session's cwd
+    const cwd: string | undefined = session?.header?.cwd
+    const workspace = cwd
+      ? cwd.split('/').filter(Boolean).pop() || cwd
+      : undefined
+    
+    const truncate = (s: string, n: number) => s.length > n ? `${s.slice(0, n)}…` : s
+    
+    // Build the message
+    const lines: string[] = []
+    if (userPrompt) {
+      lines.push(`💬 ${truncate(userPrompt.replace(/\s+/g, ' ').trim(), 60)}`)
+    }
+    if (reply) {
+      lines.push(`🤖 ${truncate(reply.replace(/\s+/g, ' ').trim(), 80)}`)
+    }
+    if (tools.length > 0) {
+      lines.push(`🔧 工具: ${tools.join(', ')}`)
+    }
+    const meta: string[] = [`第 ${turn} 轮`]
+    if (steps > 0) meta.push(`${steps} 步`)
+    if (typeof turnStartTime === 'number') {
+      const lastEvent = turnEvents[turnEvents.length - 1]
+      if (lastEvent && typeof lastEvent.time === 'number') {
+        details.durationMs = lastEvent.time - turnStartTime
+        const secs = Math.round(details.durationMs / 1000)
+        meta.push(secs >= 60 ? `${Math.floor(secs / 60)}m${secs % 60}s` : `${secs}s`)
+      }
+    }
+    if (title) {
+      meta.push(`📝 ${truncate(title, 24)}`)
+    }
+    if (workspace) {
+      meta.push(`📁 ${workspace}`)
+    }
+    lines.push(`📊 ${meta.join(' · ')}`)
+    
+    // Details for metadata
+    if (userPrompt) details.userPrompt = userPrompt
+    if (reply) details.reply = reply
+    if (tools.length > 0) details.tools = tools
+    if (steps > 0) details.steps = steps
+    if (title) details.title = title
+    if (workspace) details.workspace = workspace
+    if (session?.id) details.sessionId = session.id
+    
+    return { message: lines.join('\n'), details }
+  }
+  
+  /**
+   * Flatten message content blocks (text / reasoning / tool-call) into plain text.
+   */
+  private extractText(content: any): string {
+    if (typeof content === 'string') return content
+    if (!Array.isArray(content)) return ''
+    return content
+      .filter((block: any) => block?.type === 'text' || block?.type === 'reasoning')
+      .map((block: any) => block.text ?? '')
+      .join(' ')
+      .trim()
+  }
+  
+  /**
+   * Extract a readable error message from a turn/end error reason.
+   */
+  private extractErrorMessage(error: any): string {
+    if (typeof error === 'string') return error
+    if (error?.message) return String(error.message)
+    if (error?.code) return String(error.code)
+    try {
+      return JSON.stringify(error)
+    } catch {
+      return '未知错误'
+    }
   }
 }
 

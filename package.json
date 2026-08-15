@@ -1,7 +1,7 @@
 {
   "name": "dsh-notify-plugin",
   "description": "Notification plugin for DeepSeek Harness - supports system notifications, webhooks, and WeCom bots",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
