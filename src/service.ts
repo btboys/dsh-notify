@@ -402,17 +402,10 @@ export class NotifyService extends Service {
       }
     })
     
-    // Listen for approval/confirmation events
-    this.ctx.on('approval/request' as any, async (data: any) => {
-      debug('approval/request received')
-      this.ctx.logger.debug('[notify] Approval requested')
-      await this.notifyAuthorizationRequired(
-        '需要授权',
-        data?.message || '操作需要您的授权',
-        data
-      )
-    })
-    
+    // Listen for confirmation events (authorization requests are handled above
+    // via the session/event 'approval/asked' branch, which carries richer
+    // context — do NOT also listen to the host 'approval/request' waterfall or
+    // the notification fires twice).
     this.ctx.on('confirm/request' as any, async (data: any) => {
       debug('confirm/request received')
       this.ctx.logger.debug('[notify] Confirmation requested')
