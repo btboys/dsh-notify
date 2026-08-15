@@ -349,17 +349,21 @@ export class NotifyService extends Service {
         // Extract a rich summary of this turn from the session log
         const summary = this.extractTurnSummary(session, turn)
         
+        // Title prefix: workspace name (e.g. "notify"), when available
+        const ws = summary.details.workspace
+        const title = (label: string) => ws ? `[${ws}] ${label}` : label
+        
         if (reason === 'completed' || reason === 'max-tokens') {
           debug('notifying conversation completed')
           await this.notifyConversationCompleted(
-            '✅ 对话完成',
+            title('✅ 对话完成'),
             summary.message,
             { turn, reason, ...summary.details }
           )
         } else if (reason === 'error') {
           debug('notifying conversation failed')
           await this.notifyConversationFailed(
-            '❌ 对话失败',
+            title('❌ 对话失败'),
             `${summary.message}\n错误: ${this.extractErrorMessage(event.data?.reason?.error)}`,
             { turn, reason, ...summary.details, error: event.data?.reason?.error }
           )
@@ -367,7 +371,7 @@ export class NotifyService extends Service {
           // aborted / blocked / interrupted
           debug('notifying conversation paused')
           await this.notifyConversationPaused(
-            '⏸️ 对话暂停',
+            title('⏸️ 对话暂停'),
             `${summary.message}\n原因: ${reason}`,
             { turn, reason, ...summary.details }
           )
