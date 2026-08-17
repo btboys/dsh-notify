@@ -1,22 +1,22 @@
 /**
- * dsh-notify-plugin browser half: registers the notify configuration card into
- * DSH's Settings → 插件配置 section (`settings.plugin.item` slot).
+ * dsh-notify-plugin browser half: registers a top-level "通知" settings page
+ * (settings.section) — the same entry style dsh-pocket uses — through which the
+ * user views and edits the notify configuration.
  *
- * The entry is built by tsdown into the DSH `window.__ModuleLoader__.load`
- * closure-factory bundle at client/client.js. It departs from the DSH-internal
- * card pattern only in that it types the injected `settingsScope` service
- * structurally (scope.ts) rather than importing `dsh-client-ui-settings` /
- * `dsh-client-runtime`, whose published packages are not installable outside
- * the DSH monorepo. The host in practice already serves the `notify` namespace
- * (it lists it in its WEB_SETTINGS_NAMESPACES allowlist) and injects the
- * `settingsScope` service because this entry declares it in `dsh.client.inject`.
+ * The page talks to the host over the loopback-only /dsh-notify RPC channel
+ * (ctx.connection.rpc.call) rather than the settings scope, so it needs no
+ * `@deepseek-ai/dsh-client-*` runtime dependency beyond what the DSH host
+ * injects. See src/notify-rpc.ts for the host side.
+ *
+ * Built by tsdown into the DSH window.__ModuleLoader__.load closure-factory
+ * bundle at client/client.js.
  */
 
-import { NotifyCardController } from './controller.ts'
-import { NotifyCard } from './NotifyCard.tsx'
+import { NotifySettings } from './NotifySettings.tsx'
 import { en, zh } from './locales.ts'
+import type { NotifyRpcCall } from './rpc.ts'
 
-/** Dictionary namespace owned by this card. */
+/** Dictionary namespace owned by this settings page. */
 const NS = 'settings.notify'
 
 /** The browser cordis context surface this entry touches (structural). */
@@ -30,40 +30,36 @@ interface NotifyClientContext {
     inject(slot: string, register: () => unknown): void
     register(meta: Record<string, unknown>, component: unknown): unknown
   }
-  settingsScope: {
-    bind(spec: { namespace: string }): import('./scope.ts').SettingsScope<import('./scope.ts').NotifyNsSettings>
+  connection: {
+    rpc: { call: NotifyRpcCall }
   }
 }
 
-/** The settings namespace this card edits. */
-export const NAMESPACE = 'notify'
-
 export const name = 'dsh-notify-plugin'
 
-/** Required services this card injects (host-provided cordis services). */
-export const inject = ['slots', 'locale', 'settingsScope']
+/** Required services this page injects (host-provided cordis services). */
+export const inject = ['slots', 'connection', 'locale']
 
-/** Mount the notify card into the plugin configuration section. */
+/** Mount the notify settings page into the Settings sidebar. */
 export function apply(ctx: NotifyClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'notify: card dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'notify: settings dictionaries')
   const t = ctx.locale.bind(NS)
 
-  const controller = new NotifyCardController(ctx.settingsScope.bind({ namespace: NAMESPACE }))
+  // Normalize the connection.rpc result to the shape the page consumes.
+  const rpcCall: NotifyRpcCall = (channel, endpoint, payload, signal) => {
+    return ctx.connection.rpc.call(channel, endpoint, payload, signal).then((result) => ({
+      ok: Boolean(result?.ok),
+      value: result && result.ok ? (result as { value?: unknown }).value : undefined,
+      error: (result && !result.ok ? (result as { error?: { message?: string } } | undefined)?.error : undefined),
+    }))
+  }
 
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-    name: 'settings.plugin.item',
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
     id: 'notify',
-    order: 30,
-    label: () => t('notifyTitle'),
-    inject: () => ({
-      hooks: {
-        notifyCard: {
-          getSnapshot: () => controller.getSnapshot(),
-          subscribe: (listener: () => void) => controller.subscribe(listener),
-        },
-      },
-      // Spread the actions onto the card's props.
-      ...controller.actions(),
-    }),
-  }, NotifyCard))
+    order: 60,
+    label: () => t('nav'),
+    locale: NS,
+    inject: () => ({ rpcCall }),
+  }, NotifySettings))
 }

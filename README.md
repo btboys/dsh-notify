@@ -327,23 +327,23 @@ Webhook 会收到以下 JSON payload：
 }
 ```
 
-## 🖥️ 在 Web "插件配置" 页面注册
+## 🖥️ 在 Web 配置通知（设置 → 通知）
 
-`dsh-notify-plugin` 会作为一张**可编辑的配置卡片**出现在 DSH Web 的 **设置 → 插件配置** 页，可配置启用开关、系统 / Webhook / 企业微信 / Telegram 渠道、事件过滤与标题前缀。
+`dsh-notify-plugin` 会在 DSH Web 的 **设置** 侧边栏注册一个与「通用设置」「模型」「插件」同级的一级入口 **「通知」**（与 dsh-pocket 的「手机访问」同款入口形态），在那里可配置启用开关、系统 / Webhook / 企业微信 / Telegram 渠道、触发事件与标题前缀。
 
-卡片由三部分构成：
+配置页的读写走 **loopback RPC 通道**：
 
-1. **host 平面注册 settings 命名空间**（`src/settings.ts`，已完成 ✅）——用 `NOTIFY_SETTINGS_SCHEMA` 注册 `notify` 命名空间，把 Web 上编辑的结果落盘到该 section。
-2. **client bundle 注册卡片**（`src/client/`，已完成 ✅）——浏览器端插件在 DSH 的 `settings.plugin.item` slot 注册 `notify` 卡片，绑定 `settingsScope` 绑定 `notify` 命名空间做读/写，产物发布为 `client/client.js`（tsdown 构建）。
-3. **以 bundle 方式在 host 平面挂载**（不是 agent preset）：
+1. **host 端**（`src/notify-rpc.ts` + `src/index.ts`）用 `ctx.connection.rpc.handle` 注册 `/dsh-notify` 逻辑通道，处理 `notify.config.get/set`；写入时更新运行中的 `NotifyService` 并持久化到 `$DSH_HOME/notify/config.json`，重启后自动合并生效。
+2. **client 端**（`src/client/`，tsdown 构建为 `client/client.js`）注册 `settings.section`（id `notify`），页面通过 `ctx.connection.rpc.call` 读写配置——不依赖 `settingsScope`，也不依赖 DSH 内部 settings 命名空间注入。
+3. 以 bundle 方式在 host 平面挂载：
 
    ```bash
    dsh plugin --profile web add dsh-notify-plugin
    ```
 
-完成后重启 / 刷新 DSH Web，打开 **设置 → 插件配置**，即可看到 **通知** 卡片并编辑。
+完成后重启 / 刷新 DSH Web，打开 **设置 → 通知**，即可看到并编辑全部配置。
 
-> ℹ️ DSH 需要把 `notify` 命名空间暴露给 Web（host 的 `WEB_SETTINGS_NAMESPACES` 已含 `notify`）。若你的 DSH 版本未暴露该命名空间，卡片会保持隐藏（`scope` 不可用），需在 host 侧加入 `'notify'` 白名单。
+> 💡 页面为**全量保存**：点击「保存」会把当前草稿整体写回并持久化，重启后仍生效。残留的 `notify` settings 命名空间注册（`src/settings.ts`）保留以便兼容读取该命名空间的消费者，本配置页不再依赖它。
 
 ## 🛠️ 开发
 
@@ -366,8 +366,8 @@ npm run dev
 # 集成测试（验证 settings 注册）
 node test/integration.mjs
 
-# 通知配置卡片控制器单元测试
-node --experimental-transform-types test/controller.mjs
+# 配置持久化 + RPC 通道单元测试
+node --experimental-transform-types test/persist.mjs
 ```
 
 ## 📝 示例
