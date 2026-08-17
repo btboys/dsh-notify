@@ -1,25 +1,36 @@
 /**
- * Integration test: load the notify plugin on a host-like context with a
- * settings provider, and verify the `notify` settings namespace registers.
+ * Integration test: load the notify plugin on a host-like context and verify
+ * the /dsh-notify RPC channel serves the configuration — the primary surface
+ * for the Web "通知" settings page.
+ *
+ * The plugin declares `connection` + `webServer` as host services; provide
+ * stubs that capture the RPC handler so we can exercise config.get/config.set
+ * exactly as the browser would.
  */
 
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { FileSettingsProvider } from '/Users/gson/.npm/_npx/1e7f6d9597241db0/node_modules/@deepseek-ai/dsh-settings-file/lib/index.js'
-import notifyPlugin, { NOTIFY_SETTINGS_NAMESPACE } from '../lib/index.js'
+import notifyPlugin, { NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS } from '../lib/index.js'
 
 async function run() {
-  console.log('🔍 Integration test: notify plugin settings registration\n')
+  console.log('🔍 Integration test: notify plugin RPC config channel\n')
 
+  // Isolate the plugin's config persistence into a throwaway DSH_HOME.
+  const home = mkdtempSync(join(tmpdir(), 'dsh-notify-integration-'))
+  process.env.DSH_HOME = home
+
+  let handler = null
   const ctx = new Context()
-
-  // Mount a real file-backed settings provider (host plane).
-  await ctx.plugin(FileSettingsProvider, {
-    path: '/tmp/dsh-notify-settings-test.yaml',
-    watch: false,
+  // capture the handler installNotifyRpc registers on the connection.rpc face
+  ctx.provide('connection', {
+    rpc: {
+      handle: (_channel, fn) => { handler = fn; return () => {} },
+    },
   })
-  console.log('✓ Settings provider mounted')
+  ctx.provide('webServer', {})
 
-  // Mount the notify plugin with a config.
   await ctx.plugin(notifyPlugin, {
     enabled: true,
     channels: {
@@ -29,34 +40,43 @@ async function run() {
     titlePrefix: '[DSH]',
   })
   console.log('✓ Notify plugin mounted')
-
-  // Check the settings namespace is registered and described.
-  const described = ctx.settings.describe({ redactSecrets: true })
-  const notifyDesc = described.find(d => String(d.ns) === String(NOTIFY_SETTINGS_NAMESPACE))
-  if (!notifyDesc) {
-    console.error('✗ "notify" namespace NOT registered')
+  if (!handler) {
+    console.error('✗ /dsh-notify RPC channel was NOT registered')
     process.exitCode = 1
     return
   }
-  console.log('✓ "notify" namespace registered:', String(notifyDesc.ns))
-  const shape = notifyDesc.schema?.shape || {}
-  console.log('  schema keys:', Object.keys(shape).length, Object.keys(shape).join(', '))
-  console.log('  value.enabled:', notifyDesc.value?.enabled)
-  console.log('  value.titlePrefix:', notifyDesc.value?.titlePrefix)
+  console.log(`✓ RPC channel registered: ${NOTIFY_RPC_CHANNEL}`)
 
-  // Update settings through the service and verify the plugin reconfigures.
-  await ctx.settings.update(NOTIFY_SETTINGS_NAMESPACE, { titlePrefix: '[WEB]', systemSound: false })
-  console.log('✓ settings.update succeeded')
-  const config = ctx.notify.getConfig()
-  console.log('  titlePrefix after update:', config.titlePrefix)
-  if (config.titlePrefix !== '[WEB]') {
-    console.error('✗ Plugin did not reconfigure from settings')
+  // config.get returns the effective config.
+  const getRes = await handler(NOTIFY_ENDPOINTS.configGet, {})
+  console.log('  configGet ok:', getRes.ok)
+  console.log('  titlePrefix:', getRes.value?.titlePrefix)
+  if (!getRes.ok || getRes.value?.titlePrefix !== '[DSH]') {
+    console.error('✗ configGet returned unexpected config')
     process.exitCode = 1
-  } else {
-    console.log('✓ Plugin reconfigured from settings')
+    return
   }
+  console.log('✓ configGet works')
+
+  // config.set applies and returns the updated config.
+  const setRes = await handler(NOTIFY_ENDPOINTS.configSet, { titlePrefix: '[WEB]' })
+  console.log('  configSet titlePrefix:', setRes.value?.titlePrefix)
+  if (!setRes.ok || setRes.value?.titlePrefix !== '[WEB]') {
+    console.error('✗ configSet did not apply')
+    process.exitCode = 1
+    return
+  }
+  const config = ctx.notify.getConfig()
+  console.log('  service titlePrefix after update:', config.titlePrefix)
+  if (config.titlePrefix !== '[WEB]') {
+    console.error('✗ Plugin did not apply config from RPC write')
+    process.exitCode = 1
+    return
+  }
+  console.log('✓ configSet reconfigures the running service')
 
   await ctx.fiber.dispose()
+  rmSync(home, { recursive: true, force: true })
   console.log('\n✅ Integration test passed')
 }
 

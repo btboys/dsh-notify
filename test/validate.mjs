@@ -5,11 +5,19 @@
 import { Context } from '@deepseek-ai/cordis'
 import notifyPlugin from '../lib/index.js'
 
+/** Create a test Context with the host services the plugin injects. */
+function makeCtx() {
+  const ctx = new Context()
+  ctx.provide('connection', { rpc: { handle: () => () => {} } })
+  ctx.provide('webServer', {})
+  return ctx
+}
+
 async function validate() {
   console.log('🔍 Validating Notify Plugin Structure\n')
   
-  const ctx = new Context()
-  
+  const ctx = makeCtx()
+
   // Test 1: Plugin initialization
   console.log('✓ Test 1: Plugin initialization')
   await ctx.plugin(notifyPlugin, {
@@ -90,7 +98,7 @@ async function validate() {
   
   // Test 5: Disabled plugin
   console.log('✓ Test 5: Disabled plugin behavior')
-  const ctx2 = new Context()
+  const ctx2 = makeCtx()
   await ctx2.plugin(notifyPlugin, { enabled: false })
   console.log('  Is enabled:', ctx2.notify.isEnabled())
   
