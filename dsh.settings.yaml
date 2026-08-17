@@ -1,28 +1,32 @@
 # DSH Configuration with Notify Plugin
-# Copy this to your DSH config and adjust the path
+# Copy this to your DSH config and adjust the values.
+#
+# Since 1.0.16 this package declares `dsh.bundle` metadata, so it is installed
+# as an activatable plugin bundle (not a plain dependency). Prefer installing
+# via DSH's plugin command / Web Plugin Market:
+#
+#   dsh plugin --profile web add dsh-notify-plugin
+#
+# That writes a `- id: notify / name: dsh-notify-plugin` row into the profile's
+# cordis.patch.yml. If you manage the patch layer by hand, add the same row to
+# ~/.dsh/profiles/web/cordis.patch.yml (host plane, not agent preset).
 
-plugins:
-  - id: notify
-    name: "@dsh/plugin-notify"
-    # Replace with your actual plugin path
-    # After git clone: ~/.dsh/plugins/dsh-notify
-    path: ~/.dsh/plugins/dsh-notify
-    config:
+notify:
+  enabled: true
+  channels:
+    system:
       enabled: true
-      channels:
-        system:
-          enabled: true
-          sound: true
-        webhook:
-          enabled: false
-          url: ""
-        wecom:
-          enabled: false
-          webhookUrl: ""
-      events:
-        conversationCompleted: true
-        conversationPaused: true
-        conversationFailed: true
-        authorizationRequired: true
-        confirmationRequired: true
-      titlePrefix: "[DSH]"
+      sound: true
+    webhook:
+      enabled: false
+      url: ""
+    wecom:
+      enabled: false
+      webhookUrl: ""
+  events:
+    conversationCompleted: true
+    conversationPaused: true
+    conversationFailed: true
+    authorizationRequired: true
+    confirmationRequired: true
+  titlePrefix: "[DSH]"

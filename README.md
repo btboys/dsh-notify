@@ -21,15 +21,29 @@ DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在**对话完�
 
 ## 📦 安装
 
-### 方式一：从 NPM 安装（推荐）
+### 方式一：DSH Bundle 安装（推荐）
+
+本包从 `1.0.16` 起声明了 DSH 元数据（`dsh.bundle`），会作为**插件 bundle** 被 DSH 识别并在启动时自动加载，而不再只是普通依赖（否则 DSH 会提示"该包未声明 dsh 元数据，不会在启动时加载"）。
+
+```bash
+dsh plugin --profile web add dsh-notify-plugin
+```
+
+然后重启或刷新 DSH Web，插件即被挂载到 host 平面。
+
+### 方式二：从 NPM 安装
 
 ```bash
 npm install dsh-notify-plugin
 ```
 
-然后将其挂载到 DSH（见下方"快速开始"）。
+再以 bundle 方式加入 profile：
 
-### 方式二：GitHub 快速安装
+```bash
+dsh plugin --profile web add ./node_modules/dsh-notify-plugin
+```
+
+### 方式三：GitHub 快速安装
 
 ```bash
 git clone https://github.com/btboys/dsh-notify.git ~/.dsh/plugins/dsh-notify
@@ -39,7 +53,7 @@ bash install.sh
 
 安装脚本会自动完成依赖安装、编译和配置。
 
-### 方式三：手动安装（源码编译）
+### 方式四：手动安装（源码编译）
 
 ```bash
 git clone https://github.com/btboys/dsh-notify.git ~/.dsh/plugins/dsh-notify
@@ -54,16 +68,22 @@ npm run build
 
 ## 🚀 快速开始
 
-### 1. 在 DSH Host 平面挂载插件
+### 1. 以 bundle 方式安装到 host 平面
 
-> ⚠️ 必须在 **host 平面**（`~/.dsh/profiles/web/cordis.patch.yml`）挂载，而不是 agent preset。Host 挂载才能注册 settings 命名空间并正确监听 `session/event`。
+> ⚠️ 必须在 **host 平面**（web profile）挂载，而不是 agent preset。Host 挂载才能注册 settings 命名空间并正确监听 `session/event`。
 
-编辑 `~/.dsh/profiles/web/cordis.patch.yml`：
+```bash
+dsh plugin --profile web add dsh-notify-plugin
+```
+
+该命令会识别包内的 `dsh.bundle`（`cordis.patch.yml`），把插件加入 profile 的 bundle 层，并在启动时自动加载。也可通过 Web 的 **插件市场** 一键安装。
+
+如果你希望手动管理 patch 层，可编辑 `~/.dsh/profiles/web/cordis.patch.yml` 引入本包提供的补丁：
 
 ```yaml
 - insert:
     - id: notify
-      name: '/绝对/路径/到/dsh-notify/lib/index.js'
+      name: dsh-notify-plugin
       config:
         enabled: true
         channels:
@@ -84,8 +104,8 @@ npm run build
 
 > 📌 **关键要点**：
 > - 顶层必须是 `- insert:` 包裹（PatchOptions 格式），不能直接写 entry
-> - `name` 要用**绝对路径指向 `lib/index.js`**（Node ESM 无法 import 目录）
-> - 从 NPM 安装时，`name` 填包名 `dsh-notify-plugin`
+> - 通过 bundle 安装时，`name` 用包名 `dsh-notify-plugin`（Node ESM 模块解析定位到 `lib/index.js`）
+> - 若手动用绝对路径挂载源码，`name` 改用 `/绝对/路径/到/dsh-notify/lib/index.js`
 
 ### 2. 重启 DSH
 
@@ -309,30 +329,16 @@ Webhook 会收到以下 JSON payload：
 
 ## 🖥️ 在 Web "插件配置" 页面注册
 
-DSH Web 界面有「插件配置」页面，可以在浏览器中编辑插件配置。要让 notify 插件出现在那里，需要三步：
+DSH Web 界面有「插件配置」页面，可以在浏览器中编辑插件配置。本包已声明 `dsh.bundle` 元数据，因此可作为 bundle 安装并被 DSH 识别。要让 notify 插件出现在那里，需要三步：
 
 ### 1. 插件代码注册 settings 命名空间（已完成 ✅）
 
 插件已内置 `ctx.settings.register('notify', schema)` 逻辑（见 `src/settings.ts`），导出 `NOTIFY_SETTINGS_NAMESPACE` 和 `NOTIFY_SETTINGS_SCHEMA`。
 
-### 2. 在 host 平面挂载插件（不是 agent preset）
+### 2. 以 bundle 方式在 host 平面挂载（不是 agent preset）
 
-编辑 `~/.dsh/profiles/web/cordis.patch.yml`：
-
-```yaml
-- insert:
-    - id: notify
-      name: '/绝对/路径/到/dsh-notify/lib/index.js'
-      config:
-        enabled: true
-        channels:
-          system:
-            enabled: true
-            sound: true
-        events:
-          conversationCompleted: true
-          conversationFailed: true
-          authorizationRequired: true
+```bash
+dsh plugin --profile web add dsh-notify-plugin
 ```
 
 > ⚠️ agent preset 挂载的插件无法注册 settings 命名空间（host 平面才可以）。

@@ -1,0 +1,43 @@
+# dsh-notify-plugin bundle patch layer.
+#
+# This file is the DSH *bundle* contribution of the package: it is declared by
+# the `dsh.bundle.patch` key in package.json and loaded as a profile patch layer
+# by `dsh plugin` / the Web Plugin Market. Declaring `dsh.bundle` is also what
+# makes DSH treat the package as an activatable plugin bundle instead of a plain
+# dependency ("本包未声明 dsh 元数据，不会在启动时加载").
+#
+# The `name` references the installed package so Node module resolution locates
+# the built entry (`lib/index.js`). Because DSH Web runs the host plane, the row
+# loads on the host and can register the `notify` settings namespace and listen
+# to `session/event` — agent presets cannot.
+#
+# Requirements (see README):
+#   - install: `dsh plugin --profile web add dsh-notify-plugin`
+#   - the `notify` settings namespace must be in the apiproxy
+#     WEB_SETTINGS_NAMESPACES allowlist to be editable from the Web UI.
+- insert:
+    - id: notify
+      name: dsh-notify-plugin
+      config:
+        enabled: true
+        channels:
+          system:
+            enabled: true
+            sound: true
+          webhook:
+            enabled: false
+            url: ''
+          wecom:
+            enabled: false
+            webhookUrl: ''
+          telegram:
+            enabled: false
+            botToken: ''
+            chatId: ''
+        events:
+          conversationCompleted: true
+          conversationPaused: true
+          conversationFailed: true
+          authorizationRequired: true
+          confirmationRequired: true
+        titlePrefix: ''

@@ -2,6 +2,11 @@
 
 # DSH Notify Plugin Installation Script
 # Usage: bash install.sh
+#
+# Since 1.0.16 this package declares `dsh.bundle` metadata, so it is installed
+# as an activatable DSH plugin bundle (host plane), which also makes it appear
+# in `dsh plugin` / the Web Plugin Market instead of the
+# "该包未声明 dsh 元数据，不会在启动时加载" warning.
 
 set -e
 
@@ -55,15 +60,19 @@ else
     echo -e "${YELLOW}⚠${NC} Config already exists at $CONFIG_FILE"
 fi
 
-# Create preset
-cat > "$DSH_CONFIG_DIR/presets/notify.yml" << EOF
-- id: notify
-  name: '@dsh/plugin-notify'
-  path: $PLUGIN_DIR
-  configPath: $CONFIG_FILE
-EOF
-
-echo -e "${GREEN}✓${NC} Created preset"
+# Register as a DSH plugin bundle in the web (host) profile when `dsh` is
+# available. Fall back to documenting a manual patch layer otherwise.
+if command -v dsh >/dev/null 2>&1; then
+    echo ""
+    echo "Registering plugin bundle into the web profile..."
+    dsh plugin --profile web add "$PLUGIN_DIR" \
+        || echo -e "${YELLOW}⚠${NC} Could not auto-register; add it manually:"
+    echo "   dsh plugin --profile web add dsh-notify-plugin"
+else
+    echo ""
+    echo -e "${YELLOW}⚠${NC} 'dsh' CLI not found. Register the bundle manually:"
+    echo "   dsh plugin --profile web add dsh-notify-plugin"
+fi
 
 # Run validation
 echo ""
@@ -72,10 +81,7 @@ node "$PLUGIN_DIR/test/validate.mjs"
 echo ""
 echo "✅ Installation complete!"
 echo ""
-echo "📝 Add to your DSH agent preset:"
-echo ""
-echo "   - id: notify"
-echo "     name: '@dsh/plugin-notify'"
-echo "     path: $PLUGIN_DIR"
-echo "     configPath: $CONFIG_FILE"
+echo "📝 Restart / refresh DSH Web, then verify the notify plugin loaded under"
+echo "   Settings → 插件配置 (it requires the 'notify' namespace in the apiproxy"
+echo "   WEB_SETTINGS_NAMESPACES allowlist to be editable)."
 echo ""

@@ -1,23 +1,28 @@
 {
   "name": "dsh-notify-plugin",
   "description": "Notification plugin for DeepSeek Harness - supports system notifications, webhooks, and WeCom bots",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "type": "module",
   "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
+  "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/types/index.d.ts",
+      "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
     "./src/*": "./src/*",
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "files": [
-    "lib/index.js",
-    "lib/types/**/*.d.ts",
-    "lib/types/**/*.d.ts.map",
-    "src"
+    "lib",
+    "src",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "build": "tsc",
