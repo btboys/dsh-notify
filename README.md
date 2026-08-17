@@ -329,33 +329,21 @@ Webhook 会收到以下 JSON payload：
 
 ## 🖥️ 在 Web "插件配置" 页面注册
 
-DSH Web 界面有「插件配置」页面，可以在浏览器中编辑插件配置。本包已声明 `dsh.bundle` 元数据，因此可作为 bundle 安装并被 DSH 识别。要让 notify 插件出现在那里，需要三步：
+`dsh-notify-plugin` 会作为一张**可编辑的配置卡片**出现在 DSH Web 的 **设置 → 插件配置** 页，可配置启用开关、系统 / Webhook / 企业微信 / Telegram 渠道、事件过滤与标题前缀。
 
-### 1. 插件代码注册 settings 命名空间（已完成 ✅）
+卡片由三部分构成：
 
-插件已内置 `ctx.settings.register('notify', schema)` 逻辑（见 `src/settings.ts`），导出 `NOTIFY_SETTINGS_NAMESPACE` 和 `NOTIFY_SETTINGS_SCHEMA`。
+1. **host 平面注册 settings 命名空间**（`src/settings.ts`，已完成 ✅）——用 `NOTIFY_SETTINGS_SCHEMA` 注册 `notify` 命名空间，把 Web 上编辑的结果落盘到该 section。
+2. **client bundle 注册卡片**（`src/client/`，已完成 ✅）——浏览器端插件在 DSH 的 `settings.plugin.item` slot 注册 `notify` 卡片，绑定 `settingsScope` 绑定 `notify` 命名空间做读/写，产物发布为 `client/client.js`（tsdown 构建）。
+3. **以 bundle 方式在 host 平面挂载**（不是 agent preset）：
 
-### 2. 以 bundle 方式在 host 平面挂载（不是 agent preset）
+   ```bash
+   dsh plugin --profile web add dsh-notify-plugin
+   ```
 
-```bash
-dsh plugin --profile web add dsh-notify-plugin
-```
+完成后重启 / 刷新 DSH Web，打开 **设置 → 插件配置**，即可看到 **通知** 卡片并编辑。
 
-> ⚠️ agent preset 挂载的插件无法注册 settings 命名空间（host 平面才可以）。
-
-### 3. 将命名空间加入 apiproxy 白名单
-
-修改 `packages/host/apiproxy/src/api-proxy.ts` 中的 `WEB_SETTINGS_NAMESPACES`，加入 `'notify'`：
-
-```ts
-const WEB_SETTINGS_NAMESPACES = [
-  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation', 'ui-theme', 'web-search-deepseek', 'notify',
-] as const
-```
-
-> 这是当前 DSH 的机制：暴露名单是 host 的决定，而不是插件自声明。未来版本可能支持插件自我暴露（deferred work）。
-
-完成后重启 DSH，打开 Web → 设置 → 插件配置，即可看到 notify 卡片并编辑。
+> ℹ️ DSH 需要把 `notify` 命名空间暴露给 Web（host 的 `WEB_SETTINGS_NAMESPACES` 已含 `notify`）。若你的 DSH 版本未暴露该命名空间，卡片会保持隐藏（`scope` 不可用），需在 host 侧加入 `'notify'` 白名单。
 
 ## 🛠️ 开发
 
@@ -363,14 +351,23 @@ const WEB_SETTINGS_NAMESPACES = [
 # 安装依赖
 npm install
 
-# 构建
+# 构建（host `lib/` + 浏览器端 `client/client.js`）
 npm run build
 
-# 开发模式（监听变化）
+# 仅构建浏览器端 client bundle
+npm run build:client
+
+# 类型检查（host + client）
+npm run typecheck
+
+# 开发模式（host 监听变化）
 npm run dev
 
 # 集成测试（验证 settings 注册）
 node test/integration.mjs
+
+# 通知配置卡片控制器单元测试
+node --experimental-transform-types test/controller.mjs
 ```
 
 ## 📝 示例
