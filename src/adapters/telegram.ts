@@ -316,8 +316,9 @@ export class TelegramNotificationAdapter implements NotificationAdapter {
     lines.push(md ? `*${this.escapeMarkdown(event.title)}*` : `<b>🔔 ${this.escapeHtml(event.title)}</b>`)
     lines.push('')
     
-    // Message
-    lines.push(md ? this.escapeMarkdown(event.message) : this.escapeHtml(event.message))
+    // Message — HTML mode renders the assistant's markdown (bold, code,
+    // headers, links, quotes) as native Telegram formatting
+    lines.push(md ? this.escapeMarkdown(event.message) : this.markdownToTelegramHtml(event.message))
     
     // Custom metadata only (standard turn-summary keys are omitted)
     const metadata = this.formatMetadata(event)
@@ -354,6 +355,48 @@ export class TelegramNotificationAdapter implements NotificationAdapter {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
+  }
+  
+  /**
+   * Convert the assistant's markdown body into Telegram-supported HTML
+   * (<b> <i> <s> <code> <pre> <a> <blockquote>), used in HTML parse mode so
+   * the reply renders with real formatting instead of raw `**`/`##` markers.
+   *
+   * Safety model: everything is HTML-escaped FIRST, then markdown constructs
+   * are translated on the escaped text, so arbitrary model output can never
+   * inject Telegram tags. Fenced code blocks are extracted before escaping
+   * and re-inserted as <pre> afterwards, so their content is shown verbatim.
+   * Underscore emphasis (`_x_`) is deliberately NOT translated — identifiers
+   * like `some_variable` are far more common than `_italic_` in replies.
+   */
+  private markdownToTelegramHtml(markdown: string): string {
+    // 1. Extract fenced code blocks (``` … ```) before any processing.
+    const codeBlocks: string[] = []
+    let text = markdown.replace(/```[^\n`]*\n?([\s\S]*?)```/g, (_m, code: string) => {
+      codeBlocks.push(`<pre>${this.escapeHtml(code.replace(/\n$/, ''))}</pre>`)
+      return `%%DSHCB${codeBlocks.length - 1}%%`
+    })
+
+    // 2. Escape everything else, then translate markdown constructs.
+    text = this.escapeHtml(text)
+      // inline code
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+      // bold / strikethrough / italic (bold first so ** is consumed before *)
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/~~([^~]+)~~/g, '<s>$1</s>')
+      .replace(/(?<![\w*])\*([^*\n]+)\*(?!\*)/g, '<i>$1</i>')
+      // [label](url) — escape the URL's quotes, keep http(s) only
+      .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => {
+        const safe = url.replace(/&quot;/g, '').replace(/"/g, '')
+        return /^https?:\/\//i.test(safe) ? `<a href="${safe}">${label}</a>` : label
+      })
+      // ATX headers → bold line
+      .replace(/^#{1,6}\s+(.+)$/gm, '<b>$1</b>')
+      // blockquote lines (the '>' is already escaped to &gt;)
+      .replace(/^&gt; ?(.*)$/gm, '<blockquote>$1</blockquote>')
+
+    // 3. Restore code blocks.
+    return text.replace(/%%DSHCB(\d+)%%/g, (_m, i: string) => codeBlocks[Number(i)])
   }
   
   private escapeMarkdown(str: string): string {

@@ -138,7 +138,22 @@ async function main() {
   if (receipt.text !== '回执测试' || receipt.chat_id !== '4242') throw new Error('pushText payload wrong')
   if (!adapter.canInteract('4242') || adapter.canInteract('9999')) throw new Error('canInteract gating wrong')
 
-  console.log('✓ Test 5: interactive:false disables polling')
+  console.log('✓ Test 5: markdown body renders as Telegram HTML in HTML parse mode')
+  await adapter.send({
+    type: 'conversationCompleted',
+    title: 'Markdown Test',
+    message: '## 结论\n这是 **重点** 和 `code`\n```js\nlet a = 1 < 2\n```\n详见 [文档](https://example.com)',
+  })
+  const mdMsg = calls.filter((c) => c.method === 'sendMessage').pop().payload
+  if (mdMsg.parse_mode !== 'HTML') throw new Error('expected HTML parse mode')
+  for (const frag of ['<b>结论</b>', '<b>重点</b>', '<code>code</code>', '<pre>let a = 1 &lt; 2</pre>', '<a href="https://example.com">文档</a>']) {
+    if (!mdMsg.text.includes(frag)) throw new Error(`missing ${frag} in: ${mdMsg.text}`)
+  }
+  if (mdMsg.text.includes('##') || mdMsg.text.includes('```') || mdMsg.text.includes('**')) {
+    throw new Error('raw markdown markers leaked: ' + mdMsg.text)
+  }
+
+  console.log('✓ Test 6: interactive:false disables polling')
   adapter.dispose() // stop the first adapter so getUpdates counts isolate Test 5
   await sleep(150)
   const callsBefore = calls.filter((c) => c.method === 'getUpdates').length
