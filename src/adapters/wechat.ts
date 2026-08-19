@@ -179,11 +179,21 @@ export class WeChatClawBotAdapter implements NotificationAdapter {
     }
 
     const text = this.formatText(event)
+    const failures: string[] = []
     for (const userId of targets) {
       const contextToken = this.session.users[userId]?.contextToken
       if (!contextToken) continue
-      await this.sendMessage(userId, text, contextToken)
-      this.ctx.logger.info('[notify] WeChat notification sent to %s', userId)
+      try {
+        await this.sendMessage(userId, text, contextToken)
+        this.ctx.logger.info('[notify] WeChat notification sent to %s', userId)
+      } catch (error) {
+        failures.push(`${userId}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    // Surface delivery failures so the service's allSettled log shows them;
+    // a notification that reached nobody must not look successful.
+    if (failures.length === targets.length) {
+      throw new Error(`WeChat 推送全部失败: ${failures.join('; ')}`)
     }
   }
 
@@ -440,6 +450,25 @@ export class WeChatClawBotAdapter implements NotificationAdapter {
       this.controller?.signal,
     )
     if (resp && typeof resp.ret === 'number' && resp.ret !== 0) {
+      // ret=-2 "prepare failed": the context token is dead. iLink context
+      // tokens are EPHEMERAL — the official openclaw plugin keeps them
+      // in-process only because they do not reliably survive restarts / long
+      // gaps. Evict the stale token so status/knownUsers reflects reality and
+      // the next inbound message recaptures a fresh one.
+      if (resp.ret === -2) {
+        this.ctx.logger.warn('[notify] WeChat context token for %s 已失效（ret=-2），已清除；请让对方给 Bot 发条消息以恢复推送', toUserId)
+        if (this.session?.users[toUserId]) {
+          delete this.session.users[toUserId]
+          this.saveSession()
+        }
+        throw new Error('context token 已失效（请先在微信里给 Bot 发一条消息）')
+      }
+      // ret=-14: bot session expired — the poll loop owns the relogin flow
+      // (it hits the same error on getupdates and restarts QR login); here we
+      // only report the failure so a concurrent second login never starts.
+      if (resp.ret === -14 || /session/i.test(String(resp.errmsg ?? ''))) {
+        throw new Error('WeChat 登录会话已过期，等待重新扫码（轮询循环会自动发起）')
+      }
       throw new Error(`WeChat sendmessage failed: ret=${resp.ret} ${resp.errmsg ?? ''}`)
     }
   }

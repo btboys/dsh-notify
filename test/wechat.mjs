@@ -11,7 +11,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import { createServer } from 'node:http'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { WeChatClawBotAdapter } from '../lib/adapters/wechat.js'
@@ -30,6 +30,7 @@ async function main() {
 
   const sent = []
   let pollCount = 0
+  let sendRet = 0 // flip to -2 to simulate a dead context token
   const server = createServer((req, res) => {
     let body = ''
     req.on('data', (c) => { body += c })
@@ -44,7 +45,7 @@ async function main() {
       if (req.url === '/ilink/bot/sendmessage') {
         sent.push({ headers: req.headers, payload })
         res.setHeader('Content-Type', 'application/json')
-        res.end(JSON.stringify({ ret: 0 }))
+        res.end(JSON.stringify(sendRet === 0 ? { ret: 0 } : { ret: sendRet, errmsg: 'prepare failed' }))
         return
       }
       res.statusCode = 404
@@ -123,6 +124,33 @@ async function main() {
   if (slim.includes('🔧') || slim.includes('📊')) throw new Error('tools/meta lines not dropped')
   if (slim.includes('类型:') || slim.includes('时间:') || slim.includes('详细信息')) throw new Error('footer not dropped')
   if (slim.includes('userPrompt') || slim.includes('sessionId')) throw new Error('metadata dumped')
+
+  // Test 2c: ret=-2 "prepare failed" evicts the dead context token and send throws.
+  // Uses an isolated session file + adapter so later tests keep their users.
+  console.log('✓ Test 2c: dead context token (ret=-2) is evicted and surfaces as failure')
+  const sessionFile2 = join(dir, 'wechat-session-2.json')
+  writeFileSync(sessionFile2, JSON.stringify({
+    token: 'test-bot-token', baseUrl, accountId: 'testbot@im.bot', savedAt: new Date().toISOString(),
+    users: { 'stale@im.wechat': { contextToken: 'dead-token', updatedAt: Date.now() } },
+  }))
+  const ctx2 = makeCtx()
+  const stale = new WeChatClawBotAdapter(ctx2, { enabled: true, sessionFile: sessionFile2 })
+  for (let i = 0; i < 50 && stale.getStatus().state !== 'ready'; i++) await sleep(100)
+  sendRet = -2
+  let threw = null
+  try {
+    await stale.send({ type: 'conversationCompleted', title: 't', message: '💬 x' })
+  } catch (error) { threw = error }
+  sendRet = 0
+  stale.dispose()
+  await ctx2.fiber.dispose()
+  if (!threw || !threw.message.includes('全部失败')) throw new Error('send() should throw when every delivery fails: ' + threw)
+  if (stale.getStatus().knownUsers.length !== 0) {
+    throw new Error('dead context token users were not evicted: ' + JSON.stringify(stale.getStatus().knownUsers))
+  }
+  // Session file must no longer contain the evicted users
+  const persisted = JSON.parse(readFileSync(sessionFile2, 'utf8'))
+  if (Object.keys(persisted.users ?? {}).length !== 0) throw new Error('evicted users still persisted')
 
   // Test 3: toUserIds allowlist narrows the targets
   console.log('✓ Test 3: toUserIds allowlist')
