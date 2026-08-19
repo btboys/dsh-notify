@@ -8,7 +8,7 @@ DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在**对话完�
 
 ## ✨ 功能特性
 
-- 🖥️ **系统通知** - 桌面原生通知，支持自定义提示音（macOS 声音名 / 自定义音频文件 / 按事件类型区分）
+- 🖥️ **系统通知** - 桌面原生通知（macOS / Windows / Linux），支持自定义提示音（macOS 声音名 / 自定义音频文件 / 按事件类型区分）
 - 🔗 **Webhook 通知** - 自定义 HTTP webhook，支持任意 endpoint
 - 💼 **企业微信机器人** - 企业微信群机器人通知，支持 markdown 格式
 - 💬 **微信 ClawBot** - 通过腾讯官方 iLink 协议推送到**个人微信**，扫码登录即可用；支持双向交互（微信里直接批准授权 / 回答问题 / 续接对话）
@@ -66,7 +66,10 @@ npm run build
 依赖项：
 - `axios` - HTTP 请求（webhook / 企业微信 / 微信 ClawBot / Telegram）
 - `qrcode` - 设置页本地渲染微信登录二维码（仅浏览器端 bundle 使用）
-- 系统通知基于 macOS 原生 `osascript`（无额外依赖）
+- 系统通知为**跨平台桌面原生通知**，无额外依赖：
+  - macOS：`osascript` 通知 + `afplay` 播放声音
+  - Windows：PowerShell WinRT Toast 通知（无需安装模块）+ 系统提示音
+  - Linux：`notify-send`（libnotify；无桌面环境的服务器会提示安装 `libnotify-bin`）+ `paplay`/`canberra-gtk-play` 尽力播放声音
 
 ## 🚀 快速开始
 
@@ -129,8 +132,8 @@ channels:
   system:
     enabled: true
     sound: true                   # 播放提示音
-    soundName: Glass              # 可选：macOS 系统声音名（Glass/Ping/Sosumi/Basso 等）
-    soundFile: /path/to/alert.wav # 可选：自定义音频文件（优先级高于 soundName）
+    soundName: Glass              # 可选：macOS 系统声音名（Glass/Ping/Sosumi/Basso 等，仅 macOS 生效）
+    soundFile: /path/to/alert.wav # 可选：自定义音频文件（优先级高于 soundName；Windows 仅支持 .wav）
     sounds:                       # 可选：按事件类型指定 macOS 声音名（优先级最高）
       conversationFailed: Basso
       conversationCompleted: Glass
@@ -189,9 +192,9 @@ titlePrefix: ''
 | `enabled` | boolean | `true` | 是否启用整个插件 |
 | `channels.system.enabled` | boolean | `true` | 启用系统通知 |
 | `channels.system.sound` | boolean | `true` | 播放提示音 |
-| `channels.system.soundName` | string | `''` | macOS 系统声音名（如 `Glass`、`Ping`、`Sosumi`） |
-| `channels.system.soundFile` | string | `''` | 自定义音频文件路径（经 `afplay` 播放） |
-| `channels.system.sounds` | object | `{}` | 按事件类型指定 macOS 声音名 |
+| `channels.system.soundName` | string | `''` | macOS 系统声音名（如 `Glass`、`Ping`、`Sosumi`；仅 macOS 生效） |
+| `channels.system.soundFile` | string | `''` | 自定义音频文件路径（macOS `afplay` / Linux `paplay` 播放；Windows 仅支持 `.wav`） |
+| `channels.system.sounds` | object | `{}` | 按事件类型指定 macOS 声音名（仅 macOS 生效） |
 | `channels.webhook.enabled` | boolean | `false` | 启用 webhook 通知 |
 | `channels.webhook.url` | string | `''` | Webhook URL（必需） |
 | `channels.wecom.enabled` | boolean | `false` | 启用企业微信通知 |

@@ -24,7 +24,7 @@ export const zh: Record<string, string> = {
   systemSound: '提示音',
   systemSoundHint: '通知时播放提示音',
   systemSoundName: '提示音名称',
-  systemSoundNameHint: 'macOS 声音名：Glass、Ping、Sosumi、Basso 等',
+  systemSoundNameHint: 'macOS 声音名：Glass、Ping、Sosumi、Basso 等（仅 macOS；Windows/Linux 用系统默认提示音）',
 
   channelsWebhook: 'Webhook',
   webhookEnabled: 'Webhook 通知',
@@ -100,7 +100,7 @@ export const en: Record<string, string> = {
   systemSound: 'Play sound',
   systemSoundHint: 'Play an alert sound with the notification',
   systemSoundName: 'Sound name',
-  systemSoundNameHint: 'macOS sound: Glass, Ping, Sosumi, Basso, etc.',
+  systemSoundNameHint: 'macOS sound: Glass, Ping, Sosumi, Basso, etc. (macOS only; Windows/Linux use the OS default alert sound)',
 
   channelsWebhook: 'Webhook',
   webhookEnabled: 'Webhook',

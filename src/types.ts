@@ -42,18 +42,20 @@ export interface SystemNotifyConfig {
   sound?: boolean
   /**
    * macOS system sound name, e.g. "Glass", "Ping", "Sosumi", "Basso", "default".
-   * Takes effect when `sound` is true (or unset) and `soundFile` is not set.
+   * macOS only — Windows plays SystemSounds.Asterisk and Linux the freedesktop
+   * stock sound unless `soundFile` is set.
    */
   soundName?: string
   /**
-   * Path to a custom audio file (e.g. .mp3/.wav/.aiff) to play with the
-   * notification via `afplay`. Overrides `soundName`.
+   * Path to a custom audio file to play with the notification (macOS `afplay`,
+   * Linux `paplay`; Windows only supports .wav via SoundPlayer). Overrides
+   * `soundName`.
    */
   soundFile?: string
   /**
    * Per-event-type macOS sound name overrides, e.g.
    * `{ conversationFailed: 'Basso', conversationCompleted: 'Glass' }`.
-   * Has the highest priority.
+   * macOS only; has the highest priority.
    */
   sounds?: Partial<Record<NotifyEventType, string>>
   /** Icon path for the notification */
