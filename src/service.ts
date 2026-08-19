@@ -696,12 +696,16 @@ export class NotifyService extends Service {
     // Filter events belonging to this turn (and tolerate turn-less logs)
     const turnEvents = log.filter(e => e?.type === 'turn/start' || e?.data?.turn === turn || e?.data?.turn === undefined)
     
-    // Last user message (find the user's actual question, skipping system prompts)
+    // Last user message (the user's actual words). Host-injected context rides
+    // user/message events too — <system-reminder>/<hindsight_*> XML blocks and
+    // "Current runtime context" snapshots — and must never be shown as the
+    // user's prompt. No length heuristic: short real messages ("好的") are
+    // valid and must win over stale longer ones.
     let userPrompt = ''
     for (const e of turnEvents) {
       if (e?.type !== 'user/message') continue
       const text = this.extractText(e.data?.content)
-      if (text && text.length > 20 && !text.startsWith('<system-reminder>')) {
+      if (text && !this.isInjectedContext(text)) {
         userPrompt = text
       }
     }
@@ -784,6 +788,16 @@ export class NotifyService extends Service {
     return { message: lines.join('\n'), details }
   }
   
+  /**
+   * Whether a user/message text is host-injected context rather than the
+   * user's own words: XML-ish injection blocks (`<system-reminder>`,
+   * `<hindsight_knowledge>`, …) or the runtime-context snapshot header.
+   */
+  private isInjectedContext(text: string): boolean {
+    const trimmed = text.trimStart()
+    return trimmed.startsWith('<') || trimmed.startsWith('Current runtime context')
+  }
+
   /**
    * Flatten message content blocks (text / reasoning / tool-call) into plain text.
    */
