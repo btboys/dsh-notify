@@ -125,6 +125,10 @@ async function main() {
   if (!slim.includes('💬 用户的真实问题') || !slim.includes('🤖 助手的回复摘要')) throw new Error('💬/🤖 lines missing')
   if (slim.includes('类型:') || slim.includes('时间:') || slim.includes('详细信息')) throw new Error('footer not dropped')
   if (slim.includes('userPrompt') || slim.includes('sessionId')) throw new Error('metadata dumped')
+  // Single newlines are promoted to paragraph breaks (blank lines) — the only
+  // line break the ClawBot markdown renderer preserves.
+  if (!slim.includes('💬 用户的真实问题\n\n🤖 助手的回复摘要')) throw new Error('single newline not promoted: ' + JSON.stringify(slim))
+  if (!slim.includes('对话完成】\n\n💬')) throw new Error('paragraph break should pass through untouched')
 
   // Test 2b2: custom (non-standard) metadata keys are still appended
   console.log('✓ Test 2b2: custom metadata keys survive slimming')

@@ -45,6 +45,17 @@ const POLL_RETRY_BACKOFF_MS = 5_000
 /** WeChat text items are plain text; keep pushes comfortably small. */
 const MAX_TEXT_LENGTH = 2000
 
+/**
+ * The ClawBot UI renders text items as markdown AND strips trailing spaces,
+ * so both single newlines (soft breaks) and two-space hard breaks collapse —
+ * multi-line pushes (💬 user / 🤖 reply, approval cards, menus) arrive glued
+ * onto one line. The only break that survives is a blank line: promote every
+ * single newline to a paragraph break.
+ */
+function hardBreaks(text: string): string {
+  return text.replace(/([^\n])\n(?!\n)/g, '$1\n\n')
+}
+
 /** Persisted ClawBot session: credentials plus captured context tokens. */
 interface WeChatSession {
   token: string
@@ -443,7 +454,7 @@ export class WeChatClawBotAdapter implements NotificationAdapter {
           message_type: 2, // BOT
           message_state: 2, // FINISH
           context_token: contextToken,
-          item_list: [{ type: 1, text_item: { text } }],
+          item_list: [{ type: 1, text_item: { text: hardBreaks(text) } }],
         },
       },
       15_000,
