@@ -6,7 +6,7 @@
 
 [中文](./README.md) | **English**
 
-A notification plugin for DeepSeek Harness (DSH) with multiple channels, automatically notifying you when a **conversation completes, pauses, fails, asks you a question, or requests authorization/confirmation**.
+A notification plugin for DeepSeek Harness (DSH) with multiple channels, automatically notifying you when a **conversation completes, pauses, fails, asks you a question, requests authorization/confirmation, or its TODO task list advances**.
 
 ## ✨ Features
 
@@ -18,6 +18,7 @@ A notification plugin for DeepSeek Harness (DSH) with multiple channels, automat
 - 📝 **Slim content** — the notification body carries only the user's prompt and the assistant's reply summary (paragraph structure preserved, thinking/reasoning never leaked); tools/turn/duration stay in structured metadata
 - ❓ **Question alerts** — instant notification when the agent asks via `ask_user_question`
 - 🔐 **Authorization alerts** — instant notification when the agent requests sandbox escalation
+- 📋 **TODO progress** — pushes the checklist and progress when the agent publishes/updates its task list (`todo_write`); debounced per session, only real progress changes push
 - 🎯 **Event filtering** — enable/disable notifications per event type
 - ⚙️ **Flexible configuration** — YAML/JSON config files plus a Web settings page with runtime persistence
 - 🔌 **Cordis integration** — fits natively into DSH's Cordis plugin system
@@ -239,6 +240,17 @@ The body is a slim user-prompt + assistant-reply pair (paragraph structure prese
 
 - 💬 the user's last question (host-injected context blocks are filtered out automatically)
 - 🤖 the assistant's last reply summary
+
+A TODO progress push is a status-icon checklist plus a completion count (lists beyond 10 items are folded):
+
+```
+📊 进度: 2/5 已完成
+✅ 设计推送格式
+✅ 实现 service 推送逻辑
+🔄 更新设置页与文案
+⬜ 更新 README
+⬜ 构建验证
+```
 
 Structured data (tools used, turn count, duration, conversation title, workspace) stays in `metadata` for programmatic channels such as webhooks.
 

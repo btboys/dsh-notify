@@ -2461,28 +2461,28 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			document.head.appendChild(tag);
 		}
 		var NotifySettings_module_css_default = {
-			"selectOption": "fetK9G_selectOption",
-			"failed": "fetK9G_failed",
-			"label": "fetK9G_label",
-			"toggleInput": "fetK9G_toggleInput",
-			"qrImg": "fetK9G_qrImg",
-			"toggleThumb": "fetK9G_toggleThumb",
-			"qrBox": "fetK9G_qrBox",
-			"field": "fetK9G_field",
-			"page": "fetK9G_page",
 			"pageHint": "fetK9G_pageHint",
-			"section": "fetK9G_section",
-			"sectionTitle": "fetK9G_sectionTitle",
-			"footer": "fetK9G_footer",
-			"hint": "fetK9G_hint",
-			"select": "fetK9G_select",
-			"fieldHead": "fetK9G_fieldHead",
-			"toggle": "fetK9G_toggle",
-			"save": "fetK9G_save",
 			"toggleTrack": "fetK9G_toggleTrack",
 			"status": "fetK9G_status",
+			"section": "fetK9G_section",
+			"qrImg": "fetK9G_qrImg",
+			"select": "fetK9G_select",
+			"discard": "fetK9G_discard",
+			"field": "fetK9G_field",
+			"toggle": "fetK9G_toggle",
+			"toggleThumb": "fetK9G_toggleThumb",
 			"input": "fetK9G_input",
-			"discard": "fetK9G_discard"
+			"hint": "fetK9G_hint",
+			"toggleInput": "fetK9G_toggleInput",
+			"sectionTitle": "fetK9G_sectionTitle",
+			"footer": "fetK9G_footer",
+			"failed": "fetK9G_failed",
+			"save": "fetK9G_save",
+			"qrBox": "fetK9G_qrBox",
+			"fieldHead": "fetK9G_fieldHead",
+			"page": "fetK9G_page",
+			"label": "fetK9G_label",
+			"selectOption": "fetK9G_selectOption"
 		};
 		//#endregion
 		//#region src/client/NotifySettings.tsx

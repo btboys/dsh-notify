@@ -35,12 +35,13 @@
   - 支持静默发送（`disableNotification`）
 
 ### 3. 事件系统
-- ✅ 5种事件类型支持：
+- ✅ 6种事件类型支持：
   - `conversationCompleted` - 对话完成
   - `conversationPaused` - 对话暂停
   - `conversationFailed` - 对话失败
   - `authorizationRequired` - 需要授权
   - `confirmationRequired` - 需要确认
+  - `todoProgress` - TODO 任务列表与进度（`todo_write` 触发，进度去抖）
 
 - ✅ Cordis 事件集成
   - `notify/send` - 通用通知事件
@@ -60,6 +61,7 @@
   - `notifyConversationFailed()`
   - `notifyAuthorizationRequired()`
   - `notifyConfirmationRequired()`
+  - `notifyTodoProgress()`
 - ✅ 配置方法：
   - `getConfig()`
   - `updateConfig()`
