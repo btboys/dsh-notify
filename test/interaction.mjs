@@ -10,7 +10,11 @@
  *      maps to the option label,
  *   4. free text with nothing pending continues the last notified session
  *      via sessions.prompt (queue mode),
- *   5. non-allowlisted users are ignored.
+ *   5. non-allowlisted users are ignored,
+ *   6. /sessions and /workspace push selection menus (structured sendMenu),
+ *      /sel picks switch the continuation target — workspaces reuse their
+ *      latest session or create one when empty,
+ *   7. slash commands never consume a pending approval.
  */
 
 import { Context } from '@deepseek-ai/cordis'
@@ -53,6 +57,19 @@ async function main() {
   const responses = []
   const prompts = []
   const pushed = []
+  const menus = []
+  const promptEntries = []
+  const createdSessions = []
+  const sessionItems = [
+    { sessionId: 'session-42', updatedAt: 3, running: false, blank: false, cwd: '/work/notify', projections: { values: { title: '旧对话' } } },
+    { sessionId: 'session-app-1', updatedAt: 2, running: true, blank: false, cwd: '/work/app', projections: { values: { title: '修 bug' } } },
+    { sessionId: 'session-blank', updatedAt: 1, running: false, blank: true, cwd: '/work/app' },
+  ]
+  const workspaceItems = [
+    { workspaceId: 'ws-notify', path: '/work/notify', title: 'notify', sessionIds: ['session-42'] },
+    { workspaceId: 'ws-empty', path: '/work/empty', title: 'empty', sessionIds: [] },
+  ]
+  const ok = (rpcId, value) => ({ type: 'server-response', rpcId, result: { ok: true, value } })
   const apiProxy = {
     events: { mux: (_req, _signal) => mux.stream() },
     respond: async (message) => { responses.push(message); return { accepted: true } },
@@ -61,23 +78,37 @@ async function main() {
         prompts.push(request)
         return { type: 'server-response', rpcId: request.rpcId, result: { ok: true, value: { accepted: true } } }
       },
+      list: async (request) => ok(request.rpcId, { items: sessionItems }),
+      create: async (request) => {
+        createdSessions.push(request.payload)
+        return ok(request.rpcId, { sessionId: 'session-new-1' })
+      },
+    },
+    workspace: {
+      list: async (request) => ok(request.rpcId, { items: workspaceItems, archivedSessionIds: [] }),
     },
   }
 
   const ctx = makeCtx()
   const bridge = new InteractionBridge(ctx, apiProxy, {
     pushText: async (text) => { pushed.push(text) },
+    // Capture the structured entry but decline it, so the pushText fallback
+    // path (and its assertions) stays exercised too.
+    sendPrompt: async (entry) => { promptEntries.push(entry); return false },
+    sendMenu: async (menu) => { menus.push(menu); return true },
     canInteract: (userId) => userId === 'boss@im.wechat',
   })
   bridge.start()
 
   // Test 1: approval requested → pushed; "Y" reply settles it
   console.log('✓ Test 1: approval request pushed and approved via WeChat')
+  bridge.noteNotification('session-1', 'notify') // workspace label learned from a prior push
   mux.push({ _rpcId: 'ap-1', type: 'approval/requested', sessionId: 'session-1', approvalId: 'approval-1', toolName: 'bash', reason: '需要提升沙箱权限' })
   await sleep(50)
   const approvalPush = pushed[pushed.length - 1]
   console.log('  - pushed:', JSON.stringify(approvalPush.split('\n')[0]))
   if (!approvalPush.includes('bash') || !approvalPush.includes('Y 批准 / N 拒绝')) throw new Error('approval push malformed')
+  if (promptEntries[0]?.workspace !== 'notify') throw new Error('workspace label not attached to prompt entry')
   if (bridge.pendingCount !== 1) throw new Error('expected 1 pending interaction')
 
   await bridge.handleReply('boss@im.wechat', 'Y')
@@ -142,6 +173,63 @@ async function main() {
     throw new Error('non-allowlisted user drove an interaction')
   }
   console.log('  - intruder reply ignored')
+
+  // Test 6: /sessions pushes a menu; /sel s switches the continuation target
+  console.log('✓ Test 6: /sessions menu + /sel s switches target')
+  // Settle ap-3 left pending by Test 5 so free text reaches the continuation path.
+  await bridge.handleReply('boss@im.wechat', 'Y')
+  if (responses[responses.length - 1].rpcId !== 'ap-3') throw new Error('leftover approval not settled')
+  await bridge.handleReply('boss@im.wechat', '/sessions')
+  const sessMenu = menus[menus.length - 1]
+  console.log('  - menu text:', JSON.stringify(sessMenu.text.split('\n')[0]))
+  if (!sessMenu.text.includes('1. [notify] 旧对话') || !sessMenu.text.includes('2. [app] 修 bug')) {
+    throw new Error('session menu malformed: ' + sessMenu.text)
+  }
+  if (sessMenu.text.includes('session-blank')) throw new Error('blank session should be filtered out')
+  if (sessMenu.buttons[1]?.[0]?.data !== '/sel s 2') throw new Error('menu button data malformed')
+
+  await bridge.handleReply('boss@im.wechat', '/sel s 2')
+  if (!pushed[pushed.length - 1].includes('已切换到对话')) throw new Error('missing switch receipt: ' + pushed[pushed.length - 1])
+  await bridge.handleReply('boss@im.wechat', '继续')
+  const p2 = prompts[prompts.length - 1]
+  if (p2.payload.sessionId !== 'session-app-1') throw new Error('continuation should go to the picked session: ' + p2.payload.sessionId)
+
+  await bridge.handleReply('boss@im.wechat', '/current')
+  if (!pushed[pushed.length - 1].includes('📍 当前对话')) throw new Error('missing /current report')
+
+  await bridge.handleReply('boss@im.wechat', '/sel s 99')
+  if (!pushed[pushed.length - 1].includes('无效的序号')) throw new Error('stale index should be rejected')
+
+  // Test 7: /workspace reuses the workspace's latest session, or creates one
+  console.log('✓ Test 7: /workspace menu reuses or creates a conversation')
+  await bridge.handleReply('boss@im.wechat', '/workspace')
+  const wsMenu = menus[menus.length - 1]
+  if (!wsMenu.text.includes('1. notify') || !wsMenu.text.includes('2. empty')) throw new Error('workspace menu malformed: ' + wsMenu.text)
+
+  await bridge.handleReply('boss@im.wechat', '/sel w 1')
+  if (!pushed[pushed.length - 1].includes('已切换到工作区「notify」的对话')) throw new Error('should reuse existing session: ' + pushed[pushed.length - 1])
+  if (createdSessions.length !== 0) throw new Error('reuse path must not create a session')
+  await bridge.handleReply('boss@im.wechat', '你好')
+  if (prompts[prompts.length - 1].payload.sessionId !== 'session-42') throw new Error('workspace reuse routed wrong')
+
+  await bridge.handleReply('boss@im.wechat', '/sel w 2')
+  if (createdSessions.length !== 1 || createdSessions[0].workspaceId !== 'ws-empty') {
+    throw new Error('empty workspace should create a session: ' + JSON.stringify(createdSessions))
+  }
+  if (!pushed[pushed.length - 1].includes('已新建一个')) throw new Error('missing create receipt: ' + pushed[pushed.length - 1])
+  await bridge.handleReply('boss@im.wechat', '第一条消息')
+  if (prompts[prompts.length - 1].payload.sessionId !== 'session-new-1') throw new Error('created session should be the target')
+
+  // Test 8: slash commands never consume a pending approval
+  console.log('✓ Test 8: commands bypass pending-approval routing')
+  mux.push({ _rpcId: 'ap-4', type: 'approval/requested', sessionId: 'session-1', approvalId: 'approval-4', toolName: 'bash' })
+  await sleep(50)
+  if (bridge.pendingCount !== 1) throw new Error('expected ap-4 pending')
+  await bridge.handleReply('boss@im.wechat', '/help')
+  if (bridge.pendingCount !== 1) throw new Error('command consumed a pending approval')
+  if (!pushed[pushed.length - 1].includes('可用命令')) throw new Error('missing help text')
+  await bridge.handleReply('boss@im.wechat', 'Y')
+  if (responses[responses.length - 1].rpcId !== 'ap-4') throw new Error('Y should settle the newest pending approval')
 
   bridge.dispose()
   await ctx.fiber.dispose()

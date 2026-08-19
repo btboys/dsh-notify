@@ -60,6 +60,30 @@ export type MuxFrameView =
   | { type: 'question/requested'; sessionId: string; questions: QuestionItem[] }
   | { type: 'question/resolved'; sessionId: string; questionRpcId: string; outcome: string }
 
+/** Structural session row returned by session.list (subset we consume). */
+export interface SessionSummaryLike {
+  sessionId: string
+  updatedAt: number
+  running: boolean
+  blank: boolean
+  cwd?: string
+  origin?: 'subagent'
+  projections?: { values?: { title?: string | null } }
+}
+
+/** Structural workspace row returned by workspace.list (subset we consume). */
+export interface WorkspaceViewLike {
+  workspaceId: string
+  path: string
+  title: string
+  sessionIds: string[]
+}
+
+/** Structural RPC envelope the host returns for unary session/workspace calls. */
+interface RpcResultLike<T> {
+  result: { ok: boolean; value?: T; error?: { code?: string; message?: string } }
+}
+
 /** Minimal structural face of `ctx.apiProxy` used here. */
 export interface ApiProxyLike {
   events: {
@@ -80,16 +104,37 @@ export interface ApiProxyLike {
       rpcId: string
       payload: { sessionId: string; mode: 'queue' | 'steer'; content: Array<{ type: 'text'; text: string }>; clientTimeZone?: string }
     }): Promise<{ type: string; rpcId: string; result: { ok: boolean; value?: unknown; error?: { code?: string; message?: string } } }>
+    list(request: { rpcId: string; payload: { cursor?: string } }): Promise<RpcResultLike<{ items: SessionSummaryLike[] }>>
+    create(request: { rpcId: string; payload: { workspaceId?: string; cwd?: string } }): Promise<RpcResultLike<{ sessionId: string }>>
+  }
+  workspace: {
+    list(request: { rpcId: string; payload: Record<string, never> }): Promise<RpcResultLike<{ items: WorkspaceViewLike[]; archivedSessionIds: string[] }>>
   }
 }
 
 /** A pending answerable interaction pushed to interactive channels. */
 export type PromptInteraction =
-  | { kind: 'approval'; rpcId: string; sessionId: string; approvalId: string; toolName: string; reason?: string; createdAt: number }
-  | { kind: 'question'; rpcId: string; sessionId: string; questions: QuestionItem[]; createdAt: number }
+  | { kind: 'approval'; rpcId: string; sessionId: string; approvalId: string; toolName: string; reason?: string; createdAt: number; workspace?: string }
+  | { kind: 'question'; rpcId: string; sessionId: string; questions: QuestionItem[]; createdAt: number; workspace?: string }
 
 /** Internal alias. */
 type PendingInteraction = PromptInteraction
+
+/** One button of a channel menu (text label + opaque callback payload). */
+export interface MenuButton {
+  text: string
+  data: string
+}
+
+/**
+ * A structured selection menu. Channels with inline keyboards (Telegram)
+ * render the buttons; text-only channels (WeChat) fall back to `text`,
+ * which must list entries numbered so the user can reply `/sel <kind> <n>`.
+ */
+export interface MenuMessage {
+  text: string
+  buttons: MenuButton[][]
+}
 
 /** Wiring the bridge needs from the notify service. */
 export interface InteractionBridgeHooks {
@@ -102,6 +147,12 @@ export interface InteractionBridgeHooks {
    * channel was served; false/undefined falls back to plain pushText.
    */
   sendPrompt?(entry: PromptInteraction): Promise<boolean>
+  /**
+   * Push a selection menu (session/workspace picker) with channel-native
+   * buttons. Same contract as sendPrompt: TRUE means served; false/undefined
+   * falls back to plain pushText of menu.text.
+   */
+  sendMenu?(menu: MenuMessage): Promise<boolean>
   /** Whether a channel user may drive interactions (channel allowlists). */
   canInteract(userId: string): boolean
 }
@@ -114,6 +165,14 @@ const REJECT_WORDS = new Set(['n', 'no', 'reject', 'deny', '拒绝', '不', '不
  *  normally resolves or cancels them long before). */
 const PENDING_TTL_MS = 60 * 60_000
 
+/** How many entries the /sessions and /workspace menus list at most. */
+const MENU_PAGE_SIZE = 8
+
+/** Selection menus reference entries by 1-based index; callback payloads and
+ *  typed `/sel` commands resolve through these per-kind alias tables. Each
+ *  newly pushed menu replaces its kind's table. */
+type MenuKind = 's' | 'w'
+
 export class InteractionBridge {
   private ctx: Context
   private apiProxy: ApiProxyLike
@@ -125,6 +184,8 @@ export class InteractionBridge {
   private lastSessionId: string | undefined
   /** Human labels per session (workspace basename), learned from pushes. */
   private sessionLabels = new Map<string, string>()
+  /** Latest menu alias tables: kind → ordered ids (1-based for the user). */
+  private menuAliases = new Map<MenuKind, string[]>()
   private controller: AbortController | null = null
   private running = false
 
@@ -250,6 +311,13 @@ export class InteractionBridge {
 
     const reply = text.trim()
     if (!reply) return
+
+    // Slash commands (menu/selection) take priority over pending-answer
+    // routing so the user can always navigate away mid-approval.
+    if (reply.startsWith('/')) {
+      await this.handleCommand(reply)
+      return
+    }
 
     const pending = this.pending[this.pending.length - 1]
     if (pending?.kind === 'approval') {
@@ -409,6 +477,210 @@ export class InteractionBridge {
     }
   }
 
+  // ── slash commands (session/workspace menus) ─────────────────────────────
+
+  /**
+   * Route a `/`-prefixed message. Grammar:
+   *
+   *   /sessions          — list recent conversations, tap/reply to switch
+   *   /workspace         — list workspaces, tap/reply to switch (reuses the
+   *                        workspace's latest conversation, else creates one)
+   *   /current           — show the current continuation target
+   *   /sel s|w <n|id>    — pick entry n (latest menu) or a raw id
+   *   /help, /start      — command help
+   *
+   * Telegram delivers these as typed commands (registered via setMyCommands)
+   * or as button callbacks translated back into `/sel …`; WeChat users type
+   * them. A trailing `@botname` (Telegram group syntax) is stripped.
+   */
+  private async handleCommand(reply: string): Promise<void> {
+    const [rawToken, ...rest] = reply.slice(1).split(/\s+/)
+    const token = (rawToken ?? '').split('@')[0].toLowerCase()
+
+    switch (token) {
+      case 'sessions':
+      case 'session':
+        await this.cmdSessions()
+        return
+      case 'workspace':
+      case 'workspaces':
+        await this.cmdWorkspaces()
+        return
+      case 'current':
+        await this.cmdCurrent()
+        return
+      case 'sel':
+      case 'select':
+        await this.cmdSelect(rest)
+        return
+      case 'help':
+      case 'start':
+      default:
+        await this.hooks.pushText([
+          '📱 可用命令：',
+          '  /sessions — 选择要续接的对话',
+          '  /workspace — 切换工作区（沿用其最新对话，没有则新建）',
+          '  /current — 查看当前对话',
+          '',
+          '直接发送文字即续接当前对话；有待处理的审批/问题时，回复 Y/N 或选项序号。',
+        ].join('\n'))
+    }
+  }
+
+  /** /sessions — menu of recent conversations. */
+  private async cmdSessions(): Promise<void> {
+    const sessions = await this.listRecentSessions()
+    if (!sessions) return // failure receipt already pushed
+    if (sessions.length === 0) {
+      await this.hooks.pushText('ℹ️ 还没有可选择的对话（可先用 /workspace 切换工作区新建一个）')
+      return
+    }
+    this.menuAliases.set('s', sessions.map((s) => s.sessionId))
+    const lines = sessions.map((s, i) => {
+      const running = s.running ? ' ⏳' : ''
+      const current = s.sessionId === this.lastSessionId ? ' 👈当前' : ''
+      return `${i + 1}. [${this.workspaceLabel(s.cwd)}] ${this.titleOf(s)}${running}${current}`
+    })
+    await this.pushMenu({
+      text: ['💬 选择要续接的对话（回复 /sel s 序号）：', '', ...lines].join('\n'),
+      buttons: sessions.map((s, i) => [{
+        text: `${i + 1}. ${this.titleOf(s)}${s.sessionId === this.lastSessionId ? ' 👈' : ''}`,
+        data: `/sel s ${i + 1}`,
+      }]),
+    })
+  }
+
+  /** /workspace — menu of workspaces. */
+  private async cmdWorkspaces(): Promise<void> {
+    const resp = await this.apiProxy.workspace.list({ rpcId: randomUUID(), payload: {} })
+    if (!resp.result?.ok || !resp.result.value) {
+      await this.hooks.pushText(`⚠️ 获取工作区列表失败: ${resp.result?.error?.message ?? 'unknown error'}`)
+      return
+    }
+    const items = resp.result.value.items
+    if (items.length === 0) {
+      await this.hooks.pushText('ℹ️ 还没有注册任何工作区（先在 Web 界面创建一个）')
+      return
+    }
+    this.menuAliases.set('w', items.map((w) => w.workspaceId))
+    const lines = items.map((w, i) => `${i + 1}. ${w.title} — ${w.path}`)
+    await this.pushMenu({
+      text: ['📁 选择工作区（回复 /sel w 序号）：', '', ...lines].join('\n'),
+      buttons: items.map((w, i) => [{ text: `📁 ${w.title}`, data: `/sel w ${i + 1}` }]),
+    })
+  }
+
+  /** /current — report the continuation target. */
+  private async cmdCurrent(): Promise<void> {
+    if (!this.lastSessionId) {
+      await this.hooks.pushText('ℹ️ 当前没有选中的对话（/sessions 选择，/workspace 切换工作区）')
+      return
+    }
+    await this.hooks.pushText(`📍 当前对话：${this.labelOf(this.lastSessionId)}${this.lastSessionId.slice(0, 8)}…`)
+  }
+
+  /** /sel s|w <n|id> — apply a menu pick (button callback or typed). */
+  private async cmdSelect(args: string[]): Promise<void> {
+    const kind = (args[0] ?? '').toLowerCase()
+    const ref = args[1] ?? ''
+    if ((kind !== 's' && kind !== 'w') || !ref) {
+      await this.hooks.pushText('❓ 用法: /sel s <序号> 选择对话，/sel w <序号> 选择工作区')
+      return
+    }
+    const id = this.resolveAlias(kind, ref)
+    if (!id) {
+      await this.hooks.pushText('❓ 无效的序号，请先用 /sessions 或 /workspace 调出菜单')
+      return
+    }
+    if (kind === 's') await this.selectSession(id)
+    else await this.selectWorkspace(id)
+  }
+
+  /** Switch the continuation target to a conversation. */
+  private async selectSession(sessionId: string): Promise<void> {
+    this.lastSessionId = sessionId
+    await this.hooks.pushText(`✅ 已切换到对话 ${this.labelOf(sessionId)}${sessionId.slice(0, 8)}…，直接发消息即可续接`)
+  }
+
+  /**
+   * Switch the default workspace: reuse the workspace's most recent
+   * conversation when one exists, otherwise create a fresh session there.
+   */
+  private async selectWorkspace(workspaceId: string): Promise<void> {
+    const wsResp = await this.apiProxy.workspace.list({ rpcId: randomUUID(), payload: {} })
+    const workspace = wsResp.result?.ok
+      ? wsResp.result.value?.items.find((w) => w.workspaceId === workspaceId)
+      : undefined
+    if (!workspace) {
+      await this.hooks.pushText('⚠️ 该工作区不存在或已删除，请重新 /workspace 调出菜单')
+      return
+    }
+
+    const sessions = await this.listRecentSessions()
+    const existing = sessions?.find((s) => s.cwd === workspace.path)
+    if (existing) {
+      this.lastSessionId = existing.sessionId
+      this.sessionLabels.set(existing.sessionId, workspace.title)
+      await this.hooks.pushText(`✅ 已切换到工作区「${workspace.title}」的对话：${this.titleOf(existing)}`)
+      return
+    }
+
+    const created = await this.apiProxy.sessions.create({ rpcId: randomUUID(), payload: { workspaceId } })
+    if (created.result?.ok && created.result.value?.sessionId) {
+      const sessionId = created.result.value.sessionId
+      this.lastSessionId = sessionId
+      this.sessionLabels.set(sessionId, workspace.title)
+      await this.hooks.pushText(`✅ 工作区「${workspace.title}」暂无对话，已新建一个，直接发消息即可开始`)
+    } else {
+      await this.hooks.pushText(`⚠️ 在工作区「${workspace.title}」新建对话失败: ${created.result?.error?.message ?? 'unknown error'}`)
+    }
+  }
+
+  /** Recent continuable conversations (non-blank, non-subagent), or null on failure. */
+  private async listRecentSessions(): Promise<SessionSummaryLike[] | null> {
+    const resp = await this.apiProxy.sessions.list({ rpcId: randomUUID(), payload: {} })
+    if (!resp.result?.ok || !resp.result.value) {
+      await this.hooks.pushText(`⚠️ 获取会话列表失败: ${resp.result?.error?.message ?? 'unknown error'}`)
+      return null
+    }
+    const items = resp.result.value.items
+      .filter((s) => !s.blank && s.origin !== 'subagent')
+      .slice(0, MENU_PAGE_SIZE)
+    // Learn labels/titles so receipts can name sessions later.
+    for (const s of items) this.sessionLabels.set(s.sessionId, this.workspaceLabel(s.cwd))
+    return items
+  }
+
+  /** Resolve a menu pick: an all-digit ref indexes the latest menu of that
+   *  kind; anything else is treated as a raw id. */
+  private resolveAlias(kind: MenuKind, ref: string): string | null {
+    if (/^\d+$/.test(ref)) {
+      const aliases = this.menuAliases.get(kind)
+      const id = aliases?.[Number(ref) - 1]
+      return id ?? null
+    }
+    return ref
+  }
+
+  /** Push a selection menu: channels with buttons get the structured form,
+   *  others the numbered text (whose /sel commands the bridge parses back). */
+  private async pushMenu(menu: MenuMessage): Promise<void> {
+    const handled = (await this.hooks.sendMenu?.(menu)) === true
+    if (!handled) await this.hooks.pushText(menu.text)
+  }
+
+  /** Display title of a session row: projection title, else a short id. */
+  private titleOf(session: SessionSummaryLike): string {
+    const title = session.projections?.values?.title
+    return title && title.trim() ? title.trim() : `会话 ${session.sessionId.slice(0, 8)}…`
+  }
+
+  /** Basename of a cwd, for labeling sessions. */
+  private workspaceLabel(cwd: string | undefined): string {
+    if (!cwd) return '?'
+    return cwd.split('/').filter(Boolean).pop() || cwd
+  }
+
   // ── push formatting ────────────────────────────────────────────────────────
 
   /**
@@ -417,6 +689,10 @@ export class InteractionBridge {
    * plain-text rendering goes to hooks.pushText.
    */
   private async pushPrompt(entry: PendingInteraction, plainText: string): Promise<void> {
+    // Attach the workspace label when known so button-ized channels can head
+    // their cards with `[workspace] 需要授权` like the plain-text rendering.
+    const workspace = this.sessionLabels.get(entry.sessionId)
+    if (workspace) entry.workspace = workspace
     const handled = (await this.hooks.sendPrompt?.(entry)) === true
     if (!handled) await this.hooks.pushText(plainText)
   }

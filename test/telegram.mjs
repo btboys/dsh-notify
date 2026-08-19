@@ -11,7 +11,10 @@
  *      the keyboard,
  *   3. sendPrompt renders approval buttons and question option buttons,
  *      and declines non-buttonizable prompts (multi-question),
- *   4. canInteract/pushText gating and the interactive:false kill switch.
+ *   4. sendMenu renders selection-menu buttons under the notify:c: prefix,
+ *      menu callbacks translate back to slash commands, oversized payloads
+ *      are dropped, and setMyCommands is registered at startup,
+ *   5. canInteract/pushText gating and the interactive:false kill switch.
  */
 
 import { Context } from '@deepseek-ai/cordis'
@@ -106,15 +109,27 @@ async function main() {
 
   console.log('✓ Test 3: sendPrompt renders inline keyboards')
   const okApproval = await adapter.sendPrompt({
-    kind: 'approval', rpcId: 'r1', sessionId: 'session-abcdef', approvalId: 'a1', toolName: 'bash', reason: '测试', createdAt: Date.now(),
+    kind: 'approval', rpcId: 'r1', sessionId: 'session-abcdef', approvalId: 'a1', toolName: 'bash', reason: '测试', createdAt: Date.now(), workspace: 'financial-v5',
   })
   if (!okApproval) throw new Error('approval sendPrompt should claim')
   const approvalMsg = calls.filter((c) => c.method === 'sendMessage').pop().payload
+  if (!approvalMsg.text.startsWith('🔐 [financial-v5] 需要授权（session-…）')) {
+    throw new Error('approval header should carry the workspace label: ' + approvalMsg.text.split('\n')[0])
+  }
   const kb = approvalMsg.reply_markup?.inline_keyboard
   if (!kb?.[0]?.some((b) => b.callback_data === 'notify:a') || !kb[0].some((b) => b.callback_data === 'notify:r')) {
     throw new Error('approval keyboard malformed: ' + JSON.stringify(kb))
   }
   console.log('  - approval keyboard:', JSON.stringify(kb[0].map((b) => b.text)))
+
+  // No workspace label → header falls back to the plain form.
+  await adapter.sendPrompt({
+    kind: 'approval', rpcId: 'r1b', sessionId: 'session-x', approvalId: 'a1b', toolName: 'write', createdAt: Date.now(),
+  })
+  const unlabeled = calls.filter((c) => c.method === 'sendMessage').pop().payload
+  if (!unlabeled.text.startsWith('🔐 需要授权（session-…）')) {
+    throw new Error('unlabeled approval header wrong: ' + unlabeled.text.split('\n')[0])
+  }
 
   const okQuestion = await adapter.sendPrompt({
     kind: 'question', rpcId: 'r2', sessionId: 'session-abcdef', createdAt: Date.now(),
@@ -132,28 +147,77 @@ async function main() {
   })
   if (declined) throw new Error('multi-question prompt should fall back to text')
 
-  console.log('✓ Test 4: pushText + canInteract gating')
+  console.log('✓ Test 4: sendMenu renders menu buttons and menu callbacks translate to slash commands')
+  const menuCallsBefore = calls.filter((c) => c.method === 'sendMessage').length
+  const okMenu = await adapter.sendMenu({
+    text: '💬 选择要续接的对话：\n\n1. [app] 修 bug\n2. [web] 写文档',
+    buttons: [
+      [{ text: '1. 修 bug', data: '/sel s 1' }],
+      [{ text: '2. 写文档', data: '/sel s 2' }],
+      [{ text: 'x'.repeat(80), data: `/sel s ${'9'.repeat(80)}` }], // oversized → dropped
+    ],
+  })
+  if (!okMenu) throw new Error('sendMenu should claim')
+  const menuMsg = calls.filter((c) => c.method === 'sendMessage').pop().payload
+  const menuKb = menuMsg.reply_markup?.inline_keyboard
+  if (menuKb?.length !== 2) throw new Error('oversized menu button should be dropped: ' + JSON.stringify(menuKb))
+  if (menuKb[0][0]?.callback_data !== 'notify:c:/sel s 1') throw new Error('menu callback_data malformed')
+  console.log('  - menu keyboard:', JSON.stringify(menuKb.map((r) => r[0].callback_data)))
+
+  pendingUpdates.push({
+    update_id: updateId++,
+    callback_query: { id: 'cb-3', data: 'notify:c:/sel s 2', from: { id: 4242 }, message: { chat: { id: 4242 }, message_id: 9 } },
+  })
+  for (let i = 0; i < 40 && received.length < 4; i++) await sleep(50)
+  if (received[3]?.[1] !== '/sel s 2') throw new Error('menu callback should translate to slash command: ' + JSON.stringify(received))
+  if (calls.filter((c) => c.method === 'sendMessage').length !== menuCallsBefore + 1) throw new Error('sendMenu should send exactly one message')
+  if (!calls.some((c) => c.method === 'setMyCommands')) throw new Error('setMyCommands should be registered at startup')
+
+  console.log('✓ Test 5: pushText + canInteract gating')
   await adapter.pushText('回执测试')
   const receipt = calls.filter((c) => c.method === 'sendMessage').pop().payload
   if (receipt.text !== '回执测试' || receipt.chat_id !== '4242') throw new Error('pushText payload wrong')
   if (!adapter.canInteract('4242') || adapter.canInteract('9999')) throw new Error('canInteract gating wrong')
 
-  console.log('✓ Test 5: markdown body renders as Telegram HTML in HTML parse mode')
+  console.log('✓ Test 6: markdown body renders as Telegram HTML in HTML parse mode')
   await adapter.send({
     type: 'conversationCompleted',
     title: 'Markdown Test',
-    message: '## 结论\n这是 **重点** 和 `code`\n```js\nlet a = 1 < 2\n```\n详见 [文档](https://example.com)',
+    message: '## 结论\n这是 **重点** 和 `code`\n```js\nlet a = 1 < 2\n```\n详见 [文档](https://example.com)\n代码里的 `**星号**` 保持字面\n- 列表项甲\n- 列表项乙',
   })
   const mdMsg = calls.filter((c) => c.method === 'sendMessage').pop().payload
   if (mdMsg.parse_mode !== 'HTML') throw new Error('expected HTML parse mode')
-  for (const frag of ['<b>结论</b>', '<b>重点</b>', '<code>code</code>', '<pre>let a = 1 &lt; 2</pre>', '<a href="https://example.com">文档</a>']) {
+  for (const frag of ['<b>结论</b>', '<b>重点</b>', '<code>code</code>', '<pre>let a = 1 &lt; 2</pre>', '<a href="https://example.com">文档</a>', '<code>**星号**</code>', '• 列表项甲']) {
     if (!mdMsg.text.includes(frag)) throw new Error(`missing ${frag} in: ${mdMsg.text}`)
   }
-  if (mdMsg.text.includes('##') || mdMsg.text.includes('```') || mdMsg.text.includes('**')) {
+  if (mdMsg.text.includes('##') || mdMsg.text.includes('```') || mdMsg.text.includes('\n- ')) {
     throw new Error('raw markdown markers leaked: ' + mdMsg.text)
   }
+  // Telegram rejects entities nested INSIDE <code> (400 can't parse entities)
+  if (/<code>[^<]*<(b|i|s)>/.test(mdMsg.text)) {
+    throw new Error('entity nested inside <code> — Telegram would reject the whole message: ' + mdMsg.text)
+  }
 
-  console.log('✓ Test 6: interactive:false disables polling')
+  console.log('✓ Test 6b: markdown body renders as MarkdownV2 entities in MarkdownV2 parse mode')
+  const mdAdapter = new TelegramNotificationAdapter(makeCtx(), {
+    enabled: true, botToken: 't', chatId: '1', interactive: false, parseMode: 'MarkdownV2',
+  }, { apiBase })
+  await mdAdapter.send({
+    type: 'conversationCompleted',
+    title: 'T',
+    message: '## 根因\n旧实现**串行**执行，挤在 `deleteDetail` 里\n## 修复（与 `push()` 同款）\n1. **去重**：新增 `deleteUnchecked(primaryKey, reference)`\n> 引用一行\n详见 [文档](https://example.com)\n- 列表项丙',
+  })
+  const mdV2Msg = calls.filter((c) => c.method === 'sendMessage').pop().payload
+  if (mdV2Msg.parse_mode !== 'MarkdownV2') throw new Error('expected MarkdownV2 parse mode')
+  for (const frag of ['*根因*', '*串行*', '`deleteDetail`', '`push\\(\\)`', '>引用一行', '[文档](https://example.com)', '1\\.', '• 列表项丙']) {
+    if (!mdV2Msg.text.includes(frag)) throw new Error(`missing ${frag} in: ${mdV2Msg.text}`)
+  }
+  if (mdV2Msg.text.includes('**') || mdV2Msg.text.includes('##') || mdV2Msg.text.includes('%%DSHMD')) {
+    throw new Error('raw markdown or unresolved token leaked: ' + mdV2Msg.text)
+  }
+  mdAdapter.dispose()
+
+  console.log('✓ Test 7: interactive:false disables polling')
   adapter.dispose() // stop the first adapter so getUpdates counts isolate Test 5
   await sleep(150)
   const callsBefore = calls.filter((c) => c.method === 'getUpdates').length

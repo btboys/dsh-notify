@@ -323,6 +323,7 @@ With interaction enabled, WeChat does not just receive notifications — it **dr
 - 🔐 **Approve authorizations** — when the agent requests sandbox escalation you get "🔐 需要授权"; reply **Y** to approve / **N** to reject
 - ❓ **Answer questions** — `ask_user_question` prompts arrive with numbered options; reply with the **option number** (space-separated for multi-select) or **free text**
 - 💬 **Continue the conversation** — with nothing pending, any text reply is injected as the next user message into the **most recently notified session**, queued for execution
+- 📱 **Switch conversation/workspace** — send `/sessions` to list recent conversations or `/workspace` to list workspaces (numbered menus), then reply `/sel s <n>` / `/sel w <n>` to switch the continuation target; `/current` shows the current one (same vocabulary as the Telegram command menu)
 
 Interaction runs on the DSH host's in-process API gateway (`ctx.apiProxy`) and shares one pending table with the Web UI: WeChat and the browser race — **first answer wins**, and the other side's prompt auto-dismisses. The `toUserIds` allowlist also gates interaction: replies from non-allowlisted users are ignored (an empty allowlist lets every known user interact).
 
@@ -370,6 +371,16 @@ Telegram is the **best interaction experience** of all channels — the Bot API 
 
 - ❓ **Answer questions** — a single question with options arrives with **option buttons** (tap to answer); multi-question batches, multi-select, or free-text questions are answered by replying with the **option number or text**
 - 💬 **Continue the conversation** — with nothing pending, any text reply is injected into the **most recently notified session** as the next user message, queued for execution
+- 📱 **Command menu** — the chat's menu button (registered via `setMyCommands`) offers slash commands; tap buttons to switch, no memorizing needed:
+
+  | Command | Effect |
+  |---|---|
+  | `/sessions` | Inline buttons list recent conversations (title + workspace; blank sessions and subagents filtered) — tap to switch the continuation target |
+  | `/workspace` | Inline buttons list workspaces — tapping reuses the workspace's latest conversation, or creates a fresh one when it has none |
+  | `/current` | Show the current continuation target |
+  | `/help` | Command help |
+
+  Works on WeChat too: send the same commands as text; menus arrive as numbered lists and `/sel s <n>` / `/sel w <n>` completes the pick
 
 Mechanics and safety:
 

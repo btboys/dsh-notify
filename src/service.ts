@@ -108,6 +108,21 @@ export class NotifyService extends Service {
         }
         return claimed
       },
+      // Selection menus (/sessions, /workspace): Telegram gets inline-keyboard
+      // buttons, WeChat gets the numbered text (its users reply /sel …).
+      sendMenu: async (menu) => {
+        let claimed = false
+        const tg = this.getTelegramAdapter()
+        if (tg?.isInteractive()) {
+          claimed = (await tg.sendMenu(menu)) || claimed
+        }
+        const wx = this.getWechatAdapter()
+        if (wx) {
+          await wx.pushText(menu.text)
+          claimed = true
+        }
+        return claimed
+      },
       canInteract: (userId) =>
         (this.getWechatAdapter()?.canInteract(userId) ?? false)
         || (this.getTelegramAdapter()?.canInteract(userId) ?? false),
