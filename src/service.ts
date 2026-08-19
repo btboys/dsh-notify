@@ -745,15 +745,19 @@ export class NotifyService extends Service {
       ? cwd.split('/').filter(Boolean).pop() || cwd
       : undefined
     
+    // Truncate while preserving paragraph breaks: collapse whitespace runs
+    // within a line but keep single newlines (3+ newlines fold into a blank
+    // line). Chat pushes read far better with the reply's structure intact.
+    const tidy = (s: string) => s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
     const truncate = (s: string, n: number) => s.length > n ? `${s.slice(0, n)}…` : s
     
     // Build the message
     const lines: string[] = []
     if (userPrompt) {
-      lines.push(`💬 ${truncate(userPrompt.replace(/\s+/g, ' ').trim(), 60)}`)
+      lines.push(`💬 ${truncate(tidy(userPrompt), 200)}`)
     }
     if (reply) {
-      lines.push(`🤖 ${truncate(reply.replace(/\s+/g, ' ').trim(), 80)}`)
+      lines.push(`🤖 ${truncate(tidy(reply), 500)}`)
     }
     if (tools.length > 0) {
       lines.push(`🔧 工具: ${tools.join(', ')}`)
