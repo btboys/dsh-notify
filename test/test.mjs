@@ -181,6 +181,47 @@ async function runTests() {
   }
   console.log()
   
+  // Test 8: Regression — thinking/reasoning blocks must not leak into pushes
+  console.log('✓ Test 8: reasoning (thinking) blocks excluded from reply summary')
+  {
+    const ctx4 = makeCtx()
+    const service = new NotifyService(ctx4, {
+      enabled: true,
+      channels: {}, // no adapters — we capture the notify/send event instead
+      events: { conversationCompleted: true },
+    })
+
+    const sent = []
+    ctx4.on('notify/send', (event) => sent.push(event))
+
+    const fakeSession = {
+      id: 'session-think',
+      cwd: '/Users/test/notify',
+      log: [
+        { type: 'turn/start', data: { turn: 1 }, time: 1000 },
+        { type: 'user/message', data: { turn: 1, content: [{ type: 'text', text: '帮我查一下日志' }] }, time: 1001 },
+        { type: 'assistant/message', data: { turn: 1, message: { content: [
+          { type: 'reasoning', text: 'INTERNAL_THINKING_MARKER 让我先想想应该先 grep 哪个文件' },
+          { type: 'text', text: '已查到日志，问题出在第 42 行。' },
+        ] } }, time: 1002 },
+      ],
+    }
+
+    ctx4.emit('session/event', fakeSession, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
+    await new Promise((r) => setTimeout(r, 200))
+
+    if (sent.length !== 1) throw new Error(`expected 1 notification, got ${sent.length}`)
+    const msg = sent[0].message
+    console.log('  - message:', JSON.stringify(msg))
+    if (msg.includes('INTERNAL_THINKING_MARKER')) throw new Error('reasoning block leaked into notification')
+    if (!msg.includes('已查到日志，问题出在第 42 行。')) throw new Error('text reply missing')
+    if (!msg.includes('💬 帮我查一下日志')) throw new Error('user prompt missing')
+
+    await service.dispose()
+    await ctx4.fiber.dispose()
+  }
+  console.log()
+  
   // Cleanup
   console.log('✓ Cleanup')
   await ctx.fiber.dispose()

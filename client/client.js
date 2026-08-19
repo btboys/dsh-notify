@@ -2461,28 +2461,28 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			document.head.appendChild(tag);
 		}
 		var NotifySettings_module_css_default = {
-			"toggleInput": "fetK9G_toggleInput",
-			"toggleTrack": "fetK9G_toggleTrack",
 			"field": "fetK9G_field",
-			"input": "fetK9G_input",
-			"select": "fetK9G_select",
-			"selectOption": "fetK9G_selectOption",
-			"footer": "fetK9G_footer",
-			"fieldHead": "fetK9G_fieldHead",
-			"discard": "fetK9G_discard",
-			"pageHint": "fetK9G_pageHint",
-			"toggleThumb": "fetK9G_toggleThumb",
-			"section": "fetK9G_section",
-			"sectionTitle": "fetK9G_sectionTitle",
-			"status": "fetK9G_status",
-			"hint": "fetK9G_hint",
+			"toggle": "fetK9G_toggle",
 			"page": "fetK9G_page",
-			"qrImg": "fetK9G_qrImg",
-			"failed": "fetK9G_failed",
-			"save": "fetK9G_save",
-			"label": "fetK9G_label",
+			"toggleThumb": "fetK9G_toggleThumb",
 			"qrBox": "fetK9G_qrBox",
-			"toggle": "fetK9G_toggle"
+			"selectOption": "fetK9G_selectOption",
+			"sectionTitle": "fetK9G_sectionTitle",
+			"section": "fetK9G_section",
+			"qrImg": "fetK9G_qrImg",
+			"discard": "fetK9G_discard",
+			"label": "fetK9G_label",
+			"failed": "fetK9G_failed",
+			"status": "fetK9G_status",
+			"fieldHead": "fetK9G_fieldHead",
+			"toggleInput": "fetK9G_toggleInput",
+			"footer": "fetK9G_footer",
+			"input": "fetK9G_input",
+			"toggleTrack": "fetK9G_toggleTrack",
+			"hint": "fetK9G_hint",
+			"pageHint": "fetK9G_pageHint",
+			"select": "fetK9G_select",
+			"save": "fetK9G_save"
 		};
 		//#endregion
 		//#region src/client/NotifySettings.tsx

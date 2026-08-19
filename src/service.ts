@@ -870,11 +870,16 @@ export class NotifyService extends Service {
   /**
    * Flatten message content blocks (text / reasoning / tool-call) into plain text.
    */
+  /**
+   * Flatten message content blocks into plain text. Only `text` blocks count —
+   * `reasoning`/thinking blocks are the model's internal reasoning and must
+   * never leak into notifications.
+   */
   private extractText(content: any): string {
     if (typeof content === 'string') return content
     if (!Array.isArray(content)) return ''
     return content
-      .filter((block: any) => block?.type === 'text' || block?.type === 'reasoning')
+      .filter((block: any) => block?.type === 'text')
       .map((block: any) => block.text ?? '')
       .join(' ')
       .trim()
