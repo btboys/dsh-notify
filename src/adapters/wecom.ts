@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import axios from 'axios'
-import { NotificationAdapter } from './base.js'
+import { NotificationAdapter, extraMetadataEntries } from './base.js'
 import { NotifyEvent, WeComNotifyConfig } from '../types.js'
 
 /**
@@ -79,32 +79,15 @@ export class WeComNotificationAdapter implements NotificationAdapter {
     
     // Message
     lines.push(event.message)
-    lines.push('')
     
-    // Event type badge
-    const typeLabels: Record<string, string> = {
-      conversationCompleted: '✅ 对话完成',
-      conversationPaused: '⏸️ 对话暂停',
-      conversationFailed: '❌ 对话失败',
-      authorizationRequired: '🔐 需要授权',
-      confirmationRequired: '❓ 需要确认',
-    }
-    
-    const typeLabel = typeLabels[event.type] || event.type
-    lines.push(`**类型**: ${typeLabel}`)
-    
-    // Timestamp
-    if (event.timestamp) {
-      const date = new Date(event.timestamp)
-      lines.push(`**时间**: ${date.toLocaleString('zh-CN')}`)
-    }
-    
-    // Metadata
-    if (event.metadata && Object.keys(event.metadata).length > 0) {
+    // Slim by design: no type/time footer (the title carries the state, the
+    // chat client timestamps the message). Only custom metadata outside the
+    // standard turn-summary set is appended.
+    const extra = extraMetadataEntries(event)
+    if (extra.length > 0) {
       lines.push('')
-      lines.push('**详细信息**:')
-      for (const [key, value] of Object.entries(event.metadata)) {
-        lines.push(`- ${key}: ${value}`)
+      for (const [key, value] of extra) {
+        lines.push(`- ${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
       }
     }
     

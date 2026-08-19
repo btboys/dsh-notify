@@ -759,28 +759,17 @@ export class NotifyService extends Service {
     if (reply) {
       lines.push(`🤖 ${truncate(tidy(reply), 500)}`)
     }
-    if (tools.length > 0) {
-      lines.push(`🔧 工具: ${tools.join(', ')}`)
-    }
-    const meta: string[] = [`第 ${turn} 轮`]
-    if (steps > 0) meta.push(`${steps} 步`)
-    if (typeof turnStartTime === 'number') {
-      const lastEvent = turnEvents[turnEvents.length - 1]
-      if (lastEvent && typeof lastEvent.time === 'number') {
-        details.durationMs = lastEvent.time - turnStartTime
-        const secs = Math.round(details.durationMs / 1000)
-        meta.push(secs >= 60 ? `${Math.floor(secs / 60)}m${secs % 60}s` : `${secs}s`)
-      }
-    }
-    if (title) {
-      meta.push(`📝 ${truncate(title, 24)}`)
-    }
-    if (workspace) {
-      meta.push(`📁 ${workspace}`)
-    }
-    lines.push(`📊 ${meta.join(' · ')}`)
+    // Tools / turn / duration / workspace stay in `details` (metadata) for
+    // programmatic consumers; the human-facing message body is deliberately
+    // slim — just 💬 user prompt and 🤖 AI reply.
     
     // Details for metadata
+    const durationFromLog = (() => {
+      if (typeof turnStartTime !== 'number') return undefined
+      const lastEvent = turnEvents[turnEvents.length - 1]
+      return lastEvent && typeof lastEvent.time === 'number' ? lastEvent.time - turnStartTime : undefined
+    })()
+    if (durationFromLog !== undefined) details.durationMs = durationFromLog
     if (userPrompt) details.userPrompt = userPrompt
     if (reply) details.reply = reply
     if (tools.length > 0) details.tools = tools

@@ -108,22 +108,35 @@ async function main() {
   if (first.payload.base_info?.channel_version !== '1.0.2') throw new Error('base_info missing')
   console.log('  - to:', msg.to_user_id, '| text head:', JSON.stringify(msg.item_list[0].text_item.text.slice(0, 24)))
 
-  // Test 2b: turn-summary pushes are slimmed to 💬/🤖 lines only
+  // Test 2b: turn-summary pushes are slim — title + 💬/🤖 body, no footer,
+  // standard turn-summary metadata is not dumped (the 🔧/📊 lines no longer
+  // exist in the body at all; the source emits only 💬/🤖).
   console.log('✓ Test 2b: turn-summary push keeps only user/AI content')
   sent.length = 0
   await adapter.send({
     type: 'conversationCompleted',
     title: '✅ [notify] 对话完成',
-    message: '💬 用户的真实问题\n🤖 助手的回复摘要\n🔧 工具: bash×2, read\n📊 第 2 轮 · 2 步 · 60s · 📁 notify',
+    message: '💬 用户的真实问题\n🤖 助手的回复摘要',
     timestamp: Date.now(),
     metadata: { turn: 2, reason: 'completed', userPrompt: '用户的真实问题', workspace: 'notify', sessionId: 'session-1' },
   })
   const slim = sent[0].payload.msg.item_list[0].text_item.text
   console.log('  - text:', JSON.stringify(slim))
   if (!slim.includes('💬 用户的真实问题') || !slim.includes('🤖 助手的回复摘要')) throw new Error('💬/🤖 lines missing')
-  if (slim.includes('🔧') || slim.includes('📊')) throw new Error('tools/meta lines not dropped')
   if (slim.includes('类型:') || slim.includes('时间:') || slim.includes('详细信息')) throw new Error('footer not dropped')
   if (slim.includes('userPrompt') || slim.includes('sessionId')) throw new Error('metadata dumped')
+
+  // Test 2b2: custom (non-standard) metadata keys are still appended
+  console.log('✓ Test 2b2: custom metadata keys survive slimming')
+  sent.length = 0
+  await adapter.send({
+    type: 'conversationCompleted',
+    title: 't', message: '💬 x',
+    metadata: { turn: 3, workspace: 'notify', customKey: 'custom-value' },
+  })
+  const withCustom = sent[0].payload.msg.item_list[0].text_item.text
+  if (!withCustom.includes('customKey: custom-value')) throw new Error('custom metadata dropped: ' + JSON.stringify(withCustom))
+  if (withCustom.includes('turn:') || withCustom.includes('workspace:')) throw new Error('standard metadata leaked')
 
   // Test 2c: ret=-2 "prepare failed" evicts the dead context token and send throws.
   // Uses an isolated session file + adapter so later tests keep their users.

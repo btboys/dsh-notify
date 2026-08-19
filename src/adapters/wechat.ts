@@ -3,7 +3,7 @@ import axios from 'axios'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { NotificationAdapter } from './base.js'
+import { NotificationAdapter, extraMetadataEntries } from './base.js'
 import { NotifyEvent, WeChatNotifyConfig } from '../types.js'
 import { dshHome } from '../persist.js'
 
@@ -476,33 +476,20 @@ export class WeChatClawBotAdapter implements NotificationAdapter {
   /**
    * Plain-text rendering of a notification (iLink text items only).
    *
-   * Slim by design: the WeChat push keeps only the title and the essential
-   * body lines — 💬 user prompt and 🤖 AI reply for turn summaries (the
-   * 🔧 tools / 📊 meta lines and the type/time footer are redundant: the
-   * title already carries the state and WeChat timestamps the message).
-   * Approval/question bodies (🔐/📝/❓ lines) pass through untouched.
-   * The metadata dump is omitted for turn summaries (it duplicates the body,
-   * including full prompt text); custom metadata from programmatic sends with
-   * keys outside the standard turn-summary set is still appended.
+   * Slim by design: title + message body only. Turn-summary bodies carry just
+   * 💬 user prompt and 🤖 AI reply (the source no longer emits 🔧/📊 lines);
+   * the type/time footer is redundant (title carries the state, WeChat
+   * timestamps the message). Custom metadata outside the standard turn-summary
+   * set is still appended.
    */
   private formatText(event: NotifyEvent): string {
     const lines: string[] = []
 
     lines.push(`【${event.title}】`)
     lines.push('')
+    lines.push(event.message.trim())
 
-    const bodyLines = event.message
-      .split('\n')
-      .filter((line) => !/^🔧 工具:/.test(line) && !/^📊 /.test(line))
-    lines.push(bodyLines.join('\n').trim())
-
-    // Metadata worth showing: only keys the host did not already render into
-    // the body (turn-summary internals are noise in a chat push).
-    const STANDARD_METADATA = new Set([
-      'turn', 'reason', 'durationMs', 'userPrompt', 'reply', 'tools', 'steps',
-      'title', 'workspace', 'sessionId', 'error', 'questions', 'toolName', 'callId',
-    ])
-    const extra = Object.entries(event.metadata ?? {}).filter(([key]) => !STANDARD_METADATA.has(key))
+    const extra = extraMetadataEntries(event)
     if (extra.length > 0) {
       lines.push('')
       for (const [key, value] of extra) {

@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import axios, { AxiosInstance } from 'axios'
-import { NotificationAdapter } from './base.js'
+import { NotificationAdapter, extraMetadataEntries } from './base.js'
 import { NotifyEvent, TelegramNotifyConfig } from '../types.js'
 
 const TELEGRAM_API = 'https://api.telegram.org'
@@ -75,21 +75,21 @@ export class TelegramNotificationAdapter implements NotificationAdapter {
   
   /**
    * Format the notification as plain text.
+   * Slim: title + message; no type/time footer, no standard-metadata dump.
    */
   private formatPlainText(event: NotifyEvent): string {
+    const extra = this.formatMetadata(event)
     return [
       `🔔 ${event.title}`,
       '',
       event.message,
-      '',
-      `类型: ${this.typeLabel(event.type)}`,
-      event.timestamp ? `时间: ${new Date(event.timestamp).toLocaleString('zh-CN')}` : '',
-      this.formatMetadata(event),
+      extra ? `\n${extra}` : '',
     ].filter(Boolean).join('\n')
   }
   
   /**
    * Format the notification as rich text (HTML or MarkdownV2).
+   * Slim: title + message; only custom (non-standard) metadata appended.
    */
   private formatRichText(event: NotifyEvent, parseMode: 'HTML' | 'MarkdownV2'): string {
     const md = parseMode === 'MarkdownV2'
@@ -101,55 +101,35 @@ export class TelegramNotificationAdapter implements NotificationAdapter {
     
     // Message
     lines.push(md ? this.escapeMarkdown(event.message) : this.escapeHtml(event.message))
-    lines.push('')
     
-    // Event type badge
-    lines.push(md ? `*类型*: ${this.typeLabel(event.type)}` : `类型: ${this.typeLabel(event.type)}`)
-    
-    // Timestamp
-    if (event.timestamp) {
-      const time = new Date(event.timestamp).toLocaleString('zh-CN')
-      lines.push(md ? `*时间*: ${this.escapeMarkdown(time)}` : `时间: ${this.escapeHtml(time)}`)
-    }
-    
-    // Metadata
+    // Custom metadata only (standard turn-summary keys are omitted)
     const metadata = this.formatMetadata(event)
     if (metadata) {
       lines.push('')
-      lines.push(md ? '*详细信息*:' : '<b>详细信息</b>:')
       lines.push(metadata)
     }
     
     return lines.join('\n')
   }
   
+  /** Custom metadata outside the standard turn-summary set, escaped per mode. */
   private formatMetadata(event: NotifyEvent): string {
-    if (!event.metadata || Object.keys(event.metadata).length === 0) {
+    const extra = extraMetadataEntries(event)
+    if (extra.length === 0) {
       return ''
     }
     
     const md = this.config.parseMode === 'MarkdownV2'
     const html = this.config.parseMode === 'HTML'
     
-    return Object.entries(event.metadata)
+    return extra
       .map(([key, value]) => {
-        const display = String(value)
+        const display = typeof value === 'string' ? value : JSON.stringify(value)
         if (md) return `- ${this.escapeMarkdown(key)}: ${this.escapeMarkdown(display)}`
         if (html) return `- ${this.escapeHtml(key)}: ${this.escapeHtml(display)}`
         return `- ${key}: ${display}`
       })
       .join('\n')
-  }
-  
-  private typeLabel(type: string): string {
-    const labels: Record<string, string> = {
-      conversationCompleted: '✅ 对话完成',
-      conversationPaused: '⏸️ 对话暂停',
-      conversationFailed: '❌ 对话失败',
-      authorizationRequired: '🔐 需要授权',
-      confirmationRequired: '❓ 需要确认',
-    }
-    return labels[type] || type
   }
   
   private escapeHtml(str: string): string {
