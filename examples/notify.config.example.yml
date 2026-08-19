@@ -62,6 +62,7 @@ channels:
     chatId: YOUR_CHAT_ID
     parseMode: HTML  # HTML | MarkdownV2 | text
     disableNotification: false
+    interactive: true  # two-way: inline buttons / replies approve, answer, continue sessions
 
 # Event filters - control which events trigger notifications
 events:

@@ -26,7 +26,7 @@ export interface NotifyRpcConfig {
     webhook?: { enabled?: boolean; url?: string; method?: 'POST' | 'PUT' | 'PATCH'; timeout?: number; headers?: Record<string, string> }
     wecom?: { enabled?: boolean; webhookUrl?: string; mentions?: string[]; msgType?: 'text' | 'markdown' }
     wechat?: { enabled?: boolean; toUserIds?: string[]; interactive?: boolean; sessionFile?: string; channelVersion?: string }
-    telegram?: { enabled?: boolean; botToken?: string; chatId?: string; parseMode?: 'HTML' | 'MarkdownV2' | 'text'; disableNotification?: boolean; timeout?: number }
+    telegram?: { enabled?: boolean; botToken?: string; chatId?: string; parseMode?: 'HTML' | 'MarkdownV2' | 'text'; disableNotification?: boolean; timeout?: number; interactive?: boolean }
   }
   events?: {
     conversationCompleted?: boolean

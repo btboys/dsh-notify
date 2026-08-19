@@ -139,6 +139,14 @@ export interface TelegramNotifyConfig {
   disableNotification?: boolean
   /** Timeout in milliseconds (default: 5000) */
   timeout?: number
+  /**
+   * Enable two-way interaction (default: true when the channel is enabled):
+   * the adapter long-polls getUpdates; replies from the configured chat may
+   * answer approvals/questions (inline buttons or Y/N text) or continue the
+   * most recently notified conversation. Only the configured chatId may
+   * drive interactions.
+   */
+  interactive?: boolean
 }
 
 /**

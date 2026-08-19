@@ -386,6 +386,8 @@ export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
           onChange={(v) => setField('channels.telegram.chatId', v)} />
         <SelectRow t={t} labelKey="telegramParseMode" options={['HTML', 'MarkdownV2', 'text']} value={cs('channels.telegram.parseMode', 'HTML')}
           disabled={!enabled() || !telegramOn} onChange={(v) => setField('channels.telegram.parseMode', v)} />
+        <ToggleRow t={t} labelKey="telegramInteractive" hintKey="telegramInteractiveHint" checked={cd('channels.telegram.interactive', true)}
+          disabled={!enabled() || !telegramOn} onChange={(v) => setField('channels.telegram.interactive', v)} />
       </section>
 
       <section className={css.section} aria-label={t('eventsTitle')}>

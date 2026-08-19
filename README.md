@@ -209,6 +209,7 @@ titlePrefix: ''
 | `channels.telegram.chatId` | string | `''` | 目标聊天 ID（必需） |
 | `channels.telegram.parseMode` | string | `'HTML'` | 解析模式：`HTML`、`MarkdownV2` 或 `text` |
 | `channels.telegram.disableNotification` | boolean | `false` | 静默发送 |
+| `channels.telegram.interactive` | boolean | `true` | 双向交互：按钮/回复可批准授权、回答问题、续接会话 |
 | `events.*` | boolean | `true` | 各事件类型的开关 |
 | `titlePrefix` | string | `''` | 所有通知标题的前缀（默认不加） |
 
@@ -343,6 +344,16 @@ channels:
    - 简单方式：给机器人发一条消息，然后访问 `https://api.telegram.org/bot<你的token>/getUpdates`，返回 JSON 中的 `message.chat.id` 即为你需要的 ID
    - 或在 Telegram 中 @userinfobot 获取
 4. 在配置中填入 `botToken` 和 `chatId`，将 `enabled` 设为 `true`
+
+### 双向交互（`channels.telegram.interactive`，默认开启）
+
+与微信渠道同款能力，且体验更好——Telegram 原生支持按钮：
+
+- 🔐 **批准授权** — 推送带「✅ 批准 / ❌ 拒绝」**内联按钮**，点按钮或回复 Y/N 均可
+- ❓ **回答问题** — 单问题带选项时推送选项按钮；多问题/多选时回复序号或文字
+- 💬 **续接对话** — 无待处理交互时，任意文字回复注入最近通知的会话排队执行
+
+安全门控：只有配置的 `chatId` 可以驱动交互；按钮点击后即清除键盘，不可重复点击；与微信/Web UI 先到先得。注意：若该 Bot 配置了 webhook，getUpdates 长轮询会冲突（409），需先 `deleteWebhook`。
 
 ### Telegram 消息格式示例
 

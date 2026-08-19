@@ -83,16 +83,26 @@ export interface ApiProxyLike {
   }
 }
 
-/** A pending answerable interaction pushed to WeChat. */
-type PendingInteraction =
+/** A pending answerable interaction pushed to interactive channels. */
+export type PromptInteraction =
   | { kind: 'approval'; rpcId: string; sessionId: string; approvalId: string; toolName: string; reason?: string; createdAt: number }
   | { kind: 'question'; rpcId: string; sessionId: string; questions: QuestionItem[]; createdAt: number }
 
+/** Internal alias. */
+type PendingInteraction = PromptInteraction
+
 /** Wiring the bridge needs from the notify service. */
 export interface InteractionBridgeHooks {
-  /** Push a plain-text message to every interactive WeChat user. */
+  /** Push a plain-text message to every interactive channel. */
   pushText(text: string): Promise<void>
-  /** Whether a WeChat user may drive interactions (toUserIds allowlist). */
+  /**
+   * Push an approval/question prompt with channel-native affordances (e.g.
+   * Telegram inline-keyboard buttons). Channels without buttons render text
+   * via the bridge's public formatters. Resolve TRUE when every configured
+   * channel was served; false/undefined falls back to plain pushText.
+   */
+  sendPrompt?(entry: PromptInteraction): Promise<boolean>
+  /** Whether a channel user may drive interactions (channel allowlists). */
   canInteract(userId: string): boolean
 }
 
@@ -187,7 +197,7 @@ export class InteractionBridge {
         }
         this.track(entry)
         this.noteNotification(frame.sessionId)
-        await this.hooks.pushText(this.formatApprovalPush(entry))
+        await this.pushPrompt(entry, this.formatApprovalPush(entry))
       } else if (frame.type === 'question/requested') {
         const entry: PendingInteraction = {
           kind: 'question',
@@ -198,7 +208,7 @@ export class InteractionBridge {
         }
         this.track(entry)
         this.noteNotification(frame.sessionId)
-        await this.hooks.pushText(this.formatQuestionPush(entry))
+        await this.pushPrompt(entry, this.formatQuestionPush(entry))
       } else if (frame.type === 'approval/resolved') {
         // Settled elsewhere (e.g. the Web UI answered first) — drop ours.
         this.pending = this.pending.filter(
@@ -396,7 +406,18 @@ export class InteractionBridge {
 
   // ── push formatting ────────────────────────────────────────────────────────
 
-  private formatApprovalPush(entry: Extract<PendingInteraction, { kind: 'approval' }>): string {
+  /**
+   * Push an answerable prompt: channels with native affordances get the
+   * structured entry via hooks.sendPrompt; when no channel claims it the
+   * plain-text rendering goes to hooks.pushText.
+   */
+  private async pushPrompt(entry: PendingInteraction, plainText: string): Promise<void> {
+    const handled = (await this.hooks.sendPrompt?.(entry)) === true
+    if (!handled) await this.hooks.pushText(plainText)
+  }
+
+  /** Public plain-text rendering of an approval prompt (channels without buttons). */
+  formatApprovalPush(entry: Extract<PendingInteraction, { kind: 'approval' }>): string {
     const lines: string[] = []
     lines.push(`🔐 ${this.labelOf(entry.sessionId)}需要授权`)
     lines.push('')
@@ -407,7 +428,8 @@ export class InteractionBridge {
     return lines.join('\n')
   }
 
-  private formatQuestionPush(entry: Extract<PendingInteraction, { kind: 'question' }>): string {
+  /** Public plain-text rendering of a question prompt (channels without buttons). */
+  formatQuestionPush(entry: Extract<PendingInteraction, { kind: 'question' }>): string {
     const lines: string[] = []
     lines.push(`❓ ${this.labelOf(entry.sessionId)}需要回答`)
     lines.push('')

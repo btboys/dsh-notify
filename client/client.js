@@ -2461,28 +2461,28 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			document.head.appendChild(tag);
 		}
 		var NotifySettings_module_css_default = {
-			"failed": "fetK9G_failed",
-			"toggle": "fetK9G_toggle",
-			"pageHint": "fetK9G_pageHint",
-			"label": "fetK9G_label",
-			"selectOption": "fetK9G_selectOption",
-			"toggleInput": "fetK9G_toggleInput",
-			"page": "fetK9G_page",
-			"qrBox": "fetK9G_qrBox",
-			"sectionTitle": "fetK9G_sectionTitle",
-			"footer": "fetK9G_footer",
-			"save": "fetK9G_save",
-			"field": "fetK9G_field",
-			"discard": "fetK9G_discard",
-			"select": "fetK9G_select",
 			"status": "fetK9G_status",
+			"sectionTitle": "fetK9G_sectionTitle",
 			"fieldHead": "fetK9G_fieldHead",
 			"section": "fetK9G_section",
-			"input": "fetK9G_input",
-			"qrImg": "fetK9G_qrImg",
 			"hint": "fetK9G_hint",
 			"toggleThumb": "fetK9G_toggleThumb",
-			"toggleTrack": "fetK9G_toggleTrack"
+			"select": "fetK9G_select",
+			"page": "fetK9G_page",
+			"qrBox": "fetK9G_qrBox",
+			"toggleInput": "fetK9G_toggleInput",
+			"discard": "fetK9G_discard",
+			"save": "fetK9G_save",
+			"failed": "fetK9G_failed",
+			"label": "fetK9G_label",
+			"input": "fetK9G_input",
+			"footer": "fetK9G_footer",
+			"field": "fetK9G_field",
+			"selectOption": "fetK9G_selectOption",
+			"toggle": "fetK9G_toggle",
+			"toggleTrack": "fetK9G_toggleTrack",
+			"pageHint": "fetK9G_pageHint",
+			"qrImg": "fetK9G_qrImg"
 		};
 		//#endregion
 		//#region src/client/NotifySettings.tsx
@@ -3037,6 +3037,14 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 								value: cs("channels.telegram.parseMode", "HTML"),
 								disabled: !enabled() || !telegramOn,
 								onChange: (v) => setField("channels.telegram.parseMode", v)
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ToggleRow, {
+								t,
+								labelKey: "telegramInteractive",
+								hintKey: "telegramInteractiveHint",
+								checked: cd("channels.telegram.interactive", true),
+								disabled: !enabled() || !telegramOn,
+								onChange: (v) => setField("channels.telegram.interactive", v)
 							})
 						]
 					}),
@@ -3168,6 +3176,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			telegramChatId: "Chat ID",
 			telegramChatIdHint: "接收通知的用户或群组 ID",
 			telegramParseMode: "解析模式",
+			telegramInteractive: "双向交互",
+			telegramInteractiveHint: "授权审批发「✅批准/❌拒绝」按钮，提问发选项按钮；也可回复 Y/N、选项序号或自由文字续接会话；与 Web 端先到先得",
 			eventsTitle: "触发事件",
 			conversationCompleted: "对话完成",
 			conversationCompletedHint: "任务成功完成时提醒",
@@ -3235,6 +3245,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			telegramChatId: "Chat ID",
 			telegramChatIdHint: "User or group ID that receives notifications",
 			telegramParseMode: "Parse mode",
+			telegramInteractive: "Two-way interaction",
+			telegramInteractiveHint: "Approvals arrive with ✅/❌ buttons, questions with option buttons; Y/N text, option numbers and free text (continue session) also work; first answer wins vs the Web UI",
 			eventsTitle: "Triggers",
 			conversationCompleted: "Conversation completed",
 			conversationCompletedHint: "Notify when a task succeeds",

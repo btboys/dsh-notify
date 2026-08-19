@@ -48,6 +48,8 @@ export interface NotifySettings {
   telegramChatId: string
   /** Telegram message parse mode. */
   telegramParseMode: 'HTML' | 'MarkdownV2' | 'text'
+  /** Telegram two-way interaction (buttons / replies drive DSH). */
+  telegramInteractive: boolean
   /** Event filters. */
   notifyOnCompleted: boolean
   notifyOnPaused: boolean
@@ -79,6 +81,7 @@ export const NOTIFY_SETTINGS_SCHEMA: z<NotifySettings> = z.object({
   telegramBotToken: z.string().default(''),
   telegramChatId: z.string().default(''),
   telegramParseMode: z.union([z.const('HTML'), z.const('MarkdownV2'), z.const('text')]).default('HTML'),
+  telegramInteractive: z.boolean().default(true),
   notifyOnCompleted: z.boolean().default(true),
   notifyOnPaused: z.boolean().default(true),
   notifyOnFailed: z.boolean().default(true),
@@ -123,6 +126,7 @@ export function settingsToConfig(settings: NotifySettings): NotifyPluginConfig {
         botToken: settings.telegramBotToken,
         chatId: settings.telegramChatId,
         parseMode: settings.telegramParseMode,
+        interactive: settings.telegramInteractive,
       },
     },
     events: {
@@ -159,6 +163,7 @@ export function configToSettings(config: NotifyPluginConfig): NotifySettings {
     telegramBotToken: config.channels?.telegram?.botToken ?? '',
     telegramChatId: config.channels?.telegram?.chatId ?? '',
     telegramParseMode: config.channels?.telegram?.parseMode ?? 'HTML',
+    telegramInteractive: config.channels?.telegram?.interactive ?? true,
     notifyOnCompleted: config.events?.conversationCompleted ?? true,
     notifyOnPaused: config.events?.conversationPaused ?? true,
     notifyOnFailed: config.events?.conversationFailed ?? true,

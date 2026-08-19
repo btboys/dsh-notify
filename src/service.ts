@@ -28,7 +28,7 @@ const DEFAULT_CONFIG: Required<NotifyPluginConfig> = {
     webhook: { enabled: false, url: '', method: 'POST', timeout: 5000, headers: {} },
     wecom: { enabled: false, webhookUrl: '', mentions: [], msgType: 'markdown' },
     wechat: { enabled: false, toUserIds: [], interactive: true, sessionFile: '', channelVersion: '1.0.2' },
-    telegram: { enabled: false, botToken: '', chatId: '', parseMode: 'HTML', disableNotification: false, timeout: 5000 },
+    telegram: { enabled: false, botToken: '', chatId: '', parseMode: 'HTML', disableNotification: false, timeout: 5000, interactive: true },
   },
   events: {
     conversationCompleted: true,
@@ -79,12 +79,42 @@ export class NotifyService extends Service {
    */
   setApiProxy(apiProxy: ApiProxyLike): void {
     if (this.bridge) return
-    this.bridge = new InteractionBridge(this.ctx, apiProxy, {
-      pushText: (text) => this.getWechatAdapter()?.pushText(text) ?? Promise.resolve(),
-      canInteract: (userId) => this.getWechatAdapter()?.canInteract(userId) ?? false,
+    const bridge = new InteractionBridge(this.ctx, apiProxy, {
+      // Fan receipts out to every interactive channel; each push is
+      // best-effort so one channel's failure never blocks the others.
+      pushText: async (text) => {
+        await Promise.all([
+          this.getWechatAdapter()?.pushText(text),
+          this.getTelegramAdapter()?.pushText(text),
+        ])
+      },
+      // Approval/question prompts: Telegram gets inline-keyboard buttons,
+      // WeChat gets the plain-text rendering; both happen here so the
+      // bridge's text fallback (pushText) is not needed when any channel
+      // was served.
+      sendPrompt: async (entry) => {
+        let claimed = false
+        const tg = this.getTelegramAdapter()
+        if (tg?.isInteractive()) {
+          claimed = (await tg.sendPrompt(entry)) || claimed
+        }
+        const wx = this.getWechatAdapter()
+        if (wx) {
+          const text = entry.kind === 'approval'
+            ? bridge.formatApprovalPush(entry)
+            : bridge.formatQuestionPush(entry)
+          await wx.pushText(text)
+          claimed = true
+        }
+        return claimed
+      },
+      canInteract: (userId) =>
+        (this.getWechatAdapter()?.canInteract(userId) ?? false)
+        || (this.getTelegramAdapter()?.canInteract(userId) ?? false),
     })
+    this.bridge = bridge
     this.syncInteraction()
-    this.ctx.logger.info('[notify] WeChat interaction bridge attached (apiProxy available)')
+    this.ctx.logger.info('[notify] Interaction bridge attached (apiProxy available)')
   }
   
   /** The current WeChat adapter, if the channel is initialized. */
@@ -93,26 +123,43 @@ export class NotifyService extends Service {
       (a): a is WeChatClawBotAdapter => a.name === 'wechat' && a instanceof WeChatClawBotAdapter,
     )
   }
+
+  /** The current Telegram adapter, if the channel is initialized. */
+  private getTelegramAdapter(): TelegramNotificationAdapter | undefined {
+    return this.adapters.find(
+      (a): a is TelegramNotificationAdapter => a.name === 'telegram' && a instanceof TelegramNotificationAdapter,
+    )
+  }
   
   /**
-   * Start/stop the interaction bridge and (de)wire the adapter's inbound
-   * message hook according to the live config. Called after every adapter
+   * Start/stop the interaction bridge and (de)wire the adapters' inbound
+   * message hooks according to the live config. Called after every adapter
    * (re)build and config update.
    */
   private syncInteraction(): void {
-    const adapter = this.getWechatAdapter()
-    const interactive = this.config.enabled
+    const wechat = this.getWechatAdapter()
+    const telegram = this.getTelegramAdapter()
+    const wechatInteractive = this.config.enabled
       && this.config.channels.wechat?.enabled === true
       && this.config.channels.wechat?.interactive !== false
+    const telegramInteractive = this.config.enabled
+      && this.config.channels.telegram?.enabled === true
+      && this.config.channels.telegram?.interactive !== false
     
-    if (adapter) {
-      adapter.onUserMessage = interactive && this.bridge
+    if (wechat) {
+      wechat.onUserMessage = wechatInteractive && this.bridge
+        ? (userId, text) => { void this.bridge!.handleReply(userId, text) }
+        : undefined
+    }
+    if (telegram) {
+      telegram.onUserMessage = telegramInteractive && this.bridge
         ? (userId, text) => { void this.bridge!.handleReply(userId, text) }
         : undefined
     }
     
     if (this.bridge) {
-      if (interactive && adapter) {
+      const anyInteractive = (wechatInteractive && wechat) || (telegramInteractive && telegram)
+      if (anyInteractive) {
         this.bridge.start()
       } else {
         this.bridge.dispose()
@@ -398,6 +445,7 @@ export class NotifyService extends Service {
           parseMode: (userChannels.telegram as any)?.parseMode ?? defChannels.telegram!.parseMode,
           disableNotification: (userChannels.telegram as any)?.disableNotification ?? defChannels.telegram!.disableNotification,
           timeout: (userChannels.telegram as any)?.timeout ?? defChannels.telegram!.timeout,
+          interactive: (userChannels.telegram as any)?.interactive ?? defChannels.telegram!.interactive,
         },
         wechat: {
           enabled: (userChannels.wechat as any)?.enabled ?? defChannels.wechat!.enabled,

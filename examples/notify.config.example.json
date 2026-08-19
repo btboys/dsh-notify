@@ -34,7 +34,8 @@
       "botToken": "YOUR_BOT_TOKEN",
       "chatId": "YOUR_CHAT_ID",
       "parseMode": "HTML",
-      "disableNotification": false
+      "disableNotification": false,
+      "interactive": true
     }
   },
   "events": {

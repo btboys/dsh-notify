@@ -63,6 +63,8 @@ export const zh: Record<string, string> = {
   telegramChatId: 'Chat ID',
   telegramChatIdHint: '接收通知的用户或群组 ID',
   telegramParseMode: '解析模式',
+  telegramInteractive: '双向交互',
+  telegramInteractiveHint: '授权审批发「✅批准/❌拒绝」按钮，提问发选项按钮；也可回复 Y/N、选项序号或自由文字续接会话；与 Web 端先到先得',
 
   eventsTitle: '触发事件',
   conversationCompleted: '对话完成',
@@ -139,6 +141,8 @@ export const en: Record<string, string> = {
   telegramChatId: 'Chat ID',
   telegramChatIdHint: 'User or group ID that receives notifications',
   telegramParseMode: 'Parse mode',
+  telegramInteractive: 'Two-way interaction',
+  telegramInteractiveHint: 'Approvals arrive with ✅/❌ buttons, questions with option buttons; Y/N text, option numbers and free text (continue session) also work; first answer wins vs the Web UI',
 
   eventsTitle: 'Triggers',
   conversationCompleted: 'Conversation completed',
