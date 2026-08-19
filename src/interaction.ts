@@ -160,6 +160,11 @@ export class InteractionBridge {
     if (workspace) this.sessionLabels.set(sessionId, workspace)
   }
 
+  /** Whether the mux consumer is running. */
+  get isActive(): boolean {
+    return this.running
+  }
+
   /** Number of pending interactions (diagnostics/tests). */
   get pendingCount(): number {
     return this.pending.length

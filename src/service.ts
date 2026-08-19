@@ -131,6 +131,27 @@ export class NotifyService extends Service {
     )
   }
   
+  /** Whether the WeChat channel is configured for two-way interaction. */
+  private wechatInteractiveEnabled(): boolean {
+    return this.config.enabled
+      && this.config.channels.wechat?.enabled === true
+      && this.config.channels.wechat?.interactive !== false
+  }
+
+  /** Whether the Telegram channel is configured for two-way interaction. */
+  private telegramInteractiveEnabled(): boolean {
+    return this.config.enabled
+      && this.config.channels.telegram?.enabled === true
+      && this.config.channels.telegram?.interactive !== false
+  }
+
+  /** Whether an adapter participates in interaction (its plain push of an answerable event would duplicate the bridge's prompt). */
+  private isInteractiveAdapter(adapter: NotificationAdapter): boolean {
+    if (adapter.name === 'wechat') return this.wechatInteractiveEnabled()
+    if (adapter.name === 'telegram') return this.telegramInteractiveEnabled()
+    return false
+  }
+  
   /**
    * Start/stop the interaction bridge and (de)wire the adapters' inbound
    * message hooks according to the live config. Called after every adapter
@@ -139,12 +160,8 @@ export class NotifyService extends Service {
   private syncInteraction(): void {
     const wechat = this.getWechatAdapter()
     const telegram = this.getTelegramAdapter()
-    const wechatInteractive = this.config.enabled
-      && this.config.channels.wechat?.enabled === true
-      && this.config.channels.wechat?.interactive !== false
-    const telegramInteractive = this.config.enabled
-      && this.config.channels.telegram?.enabled === true
-      && this.config.channels.telegram?.interactive !== false
+    const wechatInteractive = this.wechatInteractiveEnabled()
+    const telegramInteractive = this.telegramInteractiveEnabled()
     
     if (wechat) {
       wechat.onUserMessage = wechatInteractive && this.bridge
@@ -206,14 +223,25 @@ export class NotifyService extends Service {
     // Track the notified session so a free-text WeChat reply continues it.
     this.bridge?.noteNotification(event.metadata?.sessionId, event.metadata?.workspace)
     
+    // Answerable events (approvals / questions) are pushed by the interaction
+    // bridge WITH reply affordances; sending the plain notification to the
+    // same interactive channels would duplicate it. Non-interactive channels
+    // (system / webhook / wecom) still receive the plain notification.
+    const bridgedEvent = this.bridge?.isActive === true
+      && (event.type === 'authorizationRequired' || event.type === 'confirmationRequired')
+    
     // Send to all enabled adapters
     const results = await Promise.allSettled(
       this.adapters.map((adapter) => {
-        if (adapter.enabled) {
-          this.ctx.logger.info('[notify] Sending via %s adapter', adapter.name)
-          return adapter.send(event)
+        if (!adapter.enabled) {
+          return Promise.resolve()
         }
-        return Promise.resolve()
+        if (bridgedEvent && this.isInteractiveAdapter(adapter)) {
+          this.ctx.logger.debug('[notify] Skipping plain %s push to %s (interaction bridge owns it)', event.type, adapter.name)
+          return Promise.resolve()
+        }
+        this.ctx.logger.info('[notify] Sending via %s adapter', adapter.name)
+        return adapter.send(event)
       })
     )
     
