@@ -1,7 +1,7 @@
 {
   "name": "dsh-notify-plugin",
   "description": "Notification plugin for DeepSeek Harness - supports system notifications, webhooks, WeCom bots, WeChat ClawBot and Telegram bots",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

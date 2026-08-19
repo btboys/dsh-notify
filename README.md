@@ -4,6 +4,8 @@
 [![GitHub release](https://img.shields.io/github/v/release/btboys/dsh-notify)](https://github.com/btboys/dsh-notify/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+**中文** | [English](./README_EN.md)
+
 DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在**对话完成、暂停、失败、向你提问、需要授权或确认**时自动发送通知。
 
 ## ✨ 功能特性
@@ -12,8 +14,8 @@ DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在**对话完�
 - 🔗 **Webhook 通知** - 自定义 HTTP webhook，支持任意 endpoint
 - 💼 **企业微信机器人** - 企业微信群机器人通知，支持 markdown 格式
 - 💬 **微信 ClawBot** - 通过腾讯官方 iLink 协议推送到**个人微信**，扫码登录即可用；支持双向交互（微信里直接批准授权 / 回答问题 / 续接对话）
-- ✈️ **Telegram 机器人** - Telegram Bot API 通知，支持 HTML / MarkdownV2 富文本
-- 📝 **丰富内容** - 通知包含工作区名、对话标题、用户问题、助手回复摘要、使用工具、轮次与耗时
+- ✈️ **Telegram 机器人** - Telegram Bot API 通知，支持 HTML / MarkdownV2 富文本；支持双向交互（内联按钮批准授权 / 回答问题 / 续接对话）
+- 📝 **精简内容** - 通知正文只含用户问题与助手回复摘要（保留段落、不含 thinking 内部推理）；工具/轮次/耗时等结构化数据保留在 metadata
 - ❓ **提问提醒** - Agent 通过 `ask_user_question` 提问时立即通知
 - 🔐 **授权提醒** - Agent 请求沙箱权限提升时立即通知
 - 🎯 **事件过滤** - 按事件类型选择性启用/禁用通知
@@ -223,21 +225,19 @@ titlePrefix: ''
 | `confirmationRequired` | `❓ [工作区] 需要回答` | Agent 通过 `ask_user_question` 向你提问 |
 | `authorizationRequired` | `🔐 [工作区] 需要授权` | Agent 请求沙箱权限提升（`approval/asked`） |
 
-### 丰富内容示例
+### 通知内容示例
 
-系统通知正文会自动提取对话上下文，例如：
+通知正文是精简的用户问题 + 助手回复（保留段落结构，回复最长 500 字符，不含 thinking 内部推理）：
 
 ```
 💬 帮我读一下当前目录，看看项目结构
 🤖 目录里有 src、lib、test 等目录…
-🔧 工具: bash×2, read
-📊 第 2 轮 · 2 步 · 60s · 📝 开发通知插件 · 📁 notify
 ```
 
-- 💬 用户最后的问题
-- 🤖 助手回复摘要
-- 🔧 使用的工具（含次数）
-- 📊 轮次、步数、耗时、对话标题、工作区
+- 💬 用户最后的问题（自动过滤系统注入的上下文块）
+- 🤖 助手最后一条回复摘要
+
+工具列表、轮次、耗时、对话标题、工作区等结构化数据保留在 `metadata` 中，供 webhook 等程序化渠道消费。
 
 ## 💻 编程式使用
 
@@ -296,8 +296,6 @@ export default function myPlugin(ctx: Context) {
 
 💬 帮我读一下当前目录，看看项目结构
 🤖 目录里有 src、lib、test 等目录…
-🔧 工具: bash×2, read
-📊 第 2 轮 · 2 步 · 60s · 📝 开发通知插件
 ```
 
 ## 💬 微信 ClawBot 设置（个人微信）
@@ -311,8 +309,9 @@ export default function myPlugin(ctx: Context) {
 
 要点：
 
-- 登录凭证与 context token 持久化在 `<DSH_HOME>/notify/wechat-session.json`（权限 0600），重启后自动恢复
-- 会话过期时适配器会自动回到扫码登录流程，设置页会重新展示二维码；也可点「重新登录」手动重置
+- 登录凭证与 context token 持久化在 `<DSH_HOME>/notify/wechat-session.json`（权限 0600）
+- **context token 是临时的**：iLink 的 `context_token` 不保证跨重启/长时间有效，失效（`ret=-2`）时适配器会自动清除并日志提示——**重启 DSH 后若收不到推送，给 Bot 发一条消息即可恢复**
+- 登录会话过期（`ret=-14`）时适配器自动回到扫码登录流程，设置页会重新展示二维码；也可点「重新登录」手动重置
 - 默认推送给所有给 Bot 发过消息的用户；配置 `toUserIds` 可限定目标
 - 消息为纯文本（iLink text item），自动截断到 2000 字符
 
@@ -341,19 +340,43 @@ channels:
 1. 在 Telegram 中与 [@BotFather](https://t.me/BotFather) 对话，发送 `/newbot` 创建机器人，复制得到的 token（格式 `123456:ABC-DEF...`）
 2. 与你的机器人开始聊天（或把它加进一个群组）
 3. 获取 chat ID：
-   - 简单方式：给机器人发一条消息，然后访问 `https://api.telegram.org/bot<你的token>/getUpdates`，返回 JSON 中的 `message.chat.id` 即为你需要的 ID
+   - 简单方式：给机器人发一条消息，然后访问 `https://api.telegram.org/bot<你的token>/getUpdates`，返回 JSON 中的 `message.chat.id` 即为你需要的 ID（私聊为正数，群聊为负数，负号要完整复制）
    - 或在 Telegram 中 @userinfobot 获取
 4. 在配置中填入 `botToken` 和 `chatId`，将 `enabled` 设为 `true`
 
+### 推送能力
+
+- 三种解析模式：`HTML`（默认，推荐）、`MarkdownV2`、`text`
+- `disableNotification: true` 可静默发送（接收端不响铃）
+- 正文为精简格式：标题 + 💬 用户问题 + 🤖 助手回复摘要
+
 ### 双向交互（`channels.telegram.interactive`，默认开启）
 
-与微信渠道同款能力，且体验更好——Telegram 原生支持按钮：
+Telegram 是**体验最好的交互渠道**——Bot API 原生支持内联按钮，且没有微信 iLink 的临时 context token 问题（chatId 即可随时推送，重启不失效）：
 
-- 🔐 **批准授权** — 推送带「✅ 批准 / ❌ 拒绝」**内联按钮**，点按钮或回复 Y/N 均可
-- ❓ **回答问题** — 单问题带选项时推送选项按钮；多问题/多选时回复序号或文字
-- 💬 **续接对话** — 无待处理交互时，任意文字回复注入最近通知的会话排队执行
+- 🔐 **批准授权** — Agent 请求沙箱权限提升时推送**带按钮的卡片**：
 
-安全门控：只有配置的 `chatId` 可以驱动交互；按钮点击后即清除键盘，不可重复点击；与微信/Web UI 先到先得。注意：若该 Bot 配置了 webhook，getUpdates 长轮询会冲突（409），需先 `deleteWebhook`。
+  ```
+  🔐 需要授权（session 前 8 位…）
+
+  🔧 操作: bash
+  📝 原因: 需要提升沙箱权限以写入主目录
+
+  [ ✅ 批准 ]  [ ❌ 拒绝 ]
+  ```
+
+  点按钮或回复 **Y**/**N** 均可；点击后键盘立即清除，防止重复提交
+
+- ❓ **回答问题** — 单个带选项的问题推送**选项按钮**（点选即答）；多问题、多选或无选项的自由问答回复**序号/文字**作答
+- 💬 **续接对话** — 无待处理交互时，任意文字回复作为下一条用户消息注入**最近通知的会话**，排队执行
+
+交互机制与安全：
+
+- 基于 DSH Host 的 in-process API 网关（`ctx.apiProxy`）实现，与 Web UI 共享同一 pending 表：Telegram / 微信 / 浏览器**先到先得**，一处作答后其余端自动失效
+- **只有配置的 `chatId` 可以驱动交互**，天然白名单；其他账号发消息/点按钮一律忽略
+- 每条回执都有确认消息（「✅ 已批准」「📨 已发送到会话」），操作结果可见
+
+> ⚠️ 若该 Bot 此前配置过 webhook，`getUpdates` 长轮询会报 409 冲突——先调用 `https://api.telegram.org/bot<token>/deleteWebhook` 即可（日志会有明确提示）。
 
 ### Telegram 消息格式示例
 
@@ -364,8 +387,6 @@ channels:
 
 💬 帮我读一下当前目录，看看项目结构
 🤖 目录里有 src、lib、test 等目录…
-🔧 工具: bash×2, read
-📊 第 2 轮 · 2 步 · 60s · 📝 开发通知插件
 ```
 
 > 💡 `parseMode` 可选 `HTML`（推荐，转义简单）、`MarkdownV2`（需完整转义）或 `text`（纯文本）。
