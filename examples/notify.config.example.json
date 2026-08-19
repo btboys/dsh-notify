@@ -24,6 +24,11 @@
       "msgType": "markdown",
       "mentions": ["@all"]
     },
+    "wechat": {
+      "enabled": false,
+      "toUserIds": [],
+      "interactive": true
+    },
     "telegram": {
       "enabled": false,
       "botToken": "YOUR_BOT_TOKEN",

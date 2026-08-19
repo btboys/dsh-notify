@@ -163,6 +163,23 @@
   cursor: default;
 }
 
+/* WeChat ClawBot login QR panel */
+.qrBox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+.qrImg {
+  width: 180px;
+  height: 180px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  background: #fff;
+  padding: 6px;
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;

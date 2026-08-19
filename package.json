@@ -1,7 +1,7 @@
 {
   "name": "dsh-notify-plugin",
-  "description": "Notification plugin for DeepSeek Harness - supports system notifications, webhooks, and WeCom bots",
-  "version": "1.0.21",
+  "description": "Notification plugin for DeepSeek Harness - supports system notifications, webhooks, WeCom bots, WeChat ClawBot and Telegram bots",
+  "version": "1.0.22",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -49,6 +49,8 @@
     "notification",
     "webhook",
     "wecom",
+    "wechat",
+    "clawbot",
     "deepseek-harness"
   ],
   "author": "btboys",
@@ -68,7 +70,8 @@
   },
   "dependencies": {
     "@deepseek-ai/cosmokit": "^1.8.2",
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
@@ -78,6 +81,7 @@
     "@deepseek-ai/dsh-settings": "^0.0.1-rc.1",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@types/node": "^20.10.0",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.1",
     "lightningcss": "^1.33.0",

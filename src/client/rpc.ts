@@ -14,6 +14,8 @@ export const NOTIFY_RPC_CHANNEL = '/dsh-notify'
 export const NOTIFY_ENDPOINTS = Object.freeze({
   configGet: 'notify.config.get',
   configSet: 'notify.config.set',
+  wechatStatus: 'notify.wechat.status',
+  wechatRelogin: 'notify.wechat.relogin',
 })
 
 /** The notification config the settings page edits (see src/types.ts). */
@@ -23,6 +25,7 @@ export interface NotifyRpcConfig {
     system?: { enabled?: boolean; sound?: boolean; soundName?: string; soundFile?: string; icon?: string }
     webhook?: { enabled?: boolean; url?: string; method?: 'POST' | 'PUT' | 'PATCH'; timeout?: number; headers?: Record<string, string> }
     wecom?: { enabled?: boolean; webhookUrl?: string; mentions?: string[]; msgType?: 'text' | 'markdown' }
+    wechat?: { enabled?: boolean; toUserIds?: string[]; interactive?: boolean; sessionFile?: string; channelVersion?: string }
     telegram?: { enabled?: boolean; botToken?: string; chatId?: string; parseMode?: 'HTML' | 'MarkdownV2' | 'text'; disableNotification?: boolean; timeout?: number }
   }
   events?: {
@@ -33,6 +36,16 @@ export interface NotifyRpcConfig {
     confirmationRequired?: boolean
   }
   titlePrefix?: string
+}
+
+/** WeChat ClawBot adapter status (see src/adapters/wechat.ts). */
+export interface WeChatStatus {
+  state: 'disabled' | 'login' | 'ready' | 'error'
+  accountId?: string
+  /** QR payload to encode and scan while state is 'login'. */
+  qrContent?: string
+  error?: string
+  knownUsers: string[]
 }
 
 /** The unary RPC result shape the host connection returns. */

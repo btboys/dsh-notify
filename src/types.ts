@@ -89,6 +89,40 @@ export interface WeComNotifyConfig {
 }
 
 /**
+ * WeChat ClawBot (iLink) bot notification configuration.
+ *
+ * ClawBot is Tencent's official personal-WeChat bot channel (iLink protocol,
+ * `ilinkai.weixin.qq.com`). Unlike webhook channels, sending is REPLY-based:
+ * proactive pushes require a `context_token` captured from an inbound message,
+ * so the adapter runs a long-poll loop and the user must message the bot once
+ * after login before notifications can reach them.
+ */
+export interface WeChatNotifyConfig {
+  enabled: boolean
+  /**
+   * Restrict push targets to these iLink user IDs (`xxx@im.wechat`).
+   * Empty (default) pushes to every user who has messaged the bot.
+   * The same allowlist gates INTERACTIVE replies: only these users may
+   * answer approvals/questions or continue a conversation from WeChat.
+   */
+  toUserIds?: string[]
+  /**
+   * Enable two-way interaction (default: true when the channel is enabled):
+   * approval/question prompts are pushed with reply instructions, and the
+   * user's WeChat replies answer them (first answer wins against the Web UI)
+   * or continue the most recently notified conversation.
+   */
+  interactive?: boolean
+  /**
+   * Path of the session file that stores the bot token and captured
+   * context tokens. Defaults to `<DSH_HOME>/notify/wechat-session.json`.
+   */
+  sessionFile?: string
+  /** iLink channel version sent in `base_info` (default: '1.0.2'). */
+  channelVersion?: string
+}
+
+/**
  * Telegram bot notification configuration
  */
 export interface TelegramNotifyConfig {
@@ -127,6 +161,7 @@ export interface NotifyPluginConfig {
     system?: SystemNotifyConfig
     webhook?: WebhookNotifyConfig
     wecom?: WeComNotifyConfig
+    wechat?: WeChatNotifyConfig
     telegram?: TelegramNotifyConfig
   }
   /** Event filters - which events trigger notifications */

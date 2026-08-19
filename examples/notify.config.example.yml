@@ -44,6 +44,15 @@ channels:
       - '@all'
       # - specific_user_id
 
+  # WeChat ClawBot (personal WeChat, Tencent iLink official channel)
+  # Enable, then scan the QR code shown in the settings page and send the
+  # bot one message in WeChat so it can push notifications to you.
+  wechat:
+    enabled: false
+    toUserIds: []  # restrict push targets (xxx@im.wechat); empty = all users who messaged the bot
+    interactive: true  # two-way: reply in WeChat to approve (Y/N), answer questions, continue sessions
+    # sessionFile: /path/to/wechat-session.json  # default: <DSH_HOME>/notify/wechat-session.json
+
   # Telegram bot notifications
   # Setup: create a bot with @BotFather, then find your chat ID
   # (e.g. via getUpdates after messaging the bot, or @userinfobot)

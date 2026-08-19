@@ -15,6 +15,8 @@ export const NOTIFY_RPC_CHANNEL = '/dsh-notify'
 export const NOTIFY_ENDPOINTS = Object.freeze({
   configGet: 'notify.config.get',
   configSet: 'notify.config.set',
+  wechatStatus: 'notify.wechat.status',
+  wechatRelogin: 'notify.wechat.relogin',
 })
 
 /** DSH rpcErrorSchema-discriminated failure. */
@@ -33,6 +35,10 @@ export interface NotifyRpcBridge {
   read(): unknown
   /** Apply a partial config to the running service and persist it. */
   write(partial: unknown): void
+  /** Read the WeChat ClawBot adapter status (login state, QR payload, users). */
+  wechatStatus?(): unknown
+  /** Forget the WeChat session and restart QR login; returns the new status. */
+  wechatRelogin?(): unknown | Promise<unknown>
 }
 
 /**
@@ -60,6 +66,14 @@ export function installNotifyRpc(
       if (payload === null || typeof payload !== 'object') return fail('notify.config.set expects an object payload')
       bridge.write(payload)
       return ok(bridge.read())
+    }
+    if (endpoint === NOTIFY_ENDPOINTS.wechatStatus) {
+      if (!bridge.wechatStatus) return fail('wechat status is not available')
+      return ok(bridge.wechatStatus())
+    }
+    if (endpoint === NOTIFY_ENDPOINTS.wechatRelogin) {
+      if (!bridge.wechatRelogin) return fail('wechat relogin is not available')
+      return ok(await bridge.wechatRelogin())
     }
     return fail(`unknown notify endpoint: ${String(endpoint)}`)
   }, { authority: 'loopback' })

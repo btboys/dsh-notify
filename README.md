@@ -11,6 +11,7 @@ DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在**对话完�
 - 🖥️ **系统通知** - 桌面原生通知，支持自定义提示音（macOS 声音名 / 自定义音频文件 / 按事件类型区分）
 - 🔗 **Webhook 通知** - 自定义 HTTP webhook，支持任意 endpoint
 - 💼 **企业微信机器人** - 企业微信群机器人通知，支持 markdown 格式
+- 💬 **微信 ClawBot** - 通过腾讯官方 iLink 协议推送到**个人微信**，扫码登录即可用；支持双向交互（微信里直接批准授权 / 回答问题 / 续接对话）
 - ✈️ **Telegram 机器人** - Telegram Bot API 通知，支持 HTML / MarkdownV2 富文本
 - 📝 **丰富内容** - 通知包含工作区名、对话标题、用户问题、助手回复摘要、使用工具、轮次与耗时
 - ❓ **提问提醒** - Agent 通过 `ask_user_question` 提问时立即通知
@@ -63,7 +64,8 @@ npm run build
 ```
 
 依赖项：
-- `axios` - HTTP 请求（webhook / 企业微信 / Telegram）
+- `axios` - HTTP 请求（webhook / 企业微信 / 微信 ClawBot / Telegram）
+- `qrcode` - 设置页本地渲染微信登录二维码（仅浏览器端 bundle 使用）
 - 系统通知基于 macOS 原生 `osascript`（无额外依赖）
 
 ## 🚀 快速开始
@@ -153,6 +155,13 @@ channels:
       # - user_id_1
       # - user_id_2
 
+  # 微信 ClawBot（个人微信，腾讯 iLink 官方通道）
+  wechat:
+    enabled: false
+    toUserIds: []            # 可选：限定推送目标（xxx@im.wechat）；留空推送给所有给 Bot 发过消息的用户
+    interactive: true        # 可选：双向交互（默认 true）——微信里回复即可批准授权/回答问题/续接会话
+    # sessionFile: /path/to/wechat-session.json  # 可选：会话文件路径（默认 <DSH_HOME>/notify/wechat-session.json）
+
   # Telegram 机器人
   telegram:
     enabled: false
@@ -188,6 +197,10 @@ titlePrefix: ''
 | `channels.wecom.enabled` | boolean | `false` | 启用企业微信通知 |
 | `channels.wecom.webhookUrl` | string | `''` | 企业微信 webhook URL（必需） |
 | `channels.wecom.msgType` | string | `'markdown'` | 消息类型：`markdown` 或 `text` |
+| `channels.wechat.enabled` | boolean | `false` | 启用微信 ClawBot（个人微信）通知 |
+| `channels.wechat.toUserIds` | string[] | `[]` | 限定推送目标；留空推送给所有给 Bot 发过消息的用户 |
+| `channels.wechat.interactive` | boolean | `true` | 双向交互：微信回复可批准授权 / 回答问题 / 续接会话 |
+| `channels.wechat.sessionFile` | string | `''` | 会话文件路径（默认 `<DSH_HOME>/notify/wechat-session.json`） |
 | `channels.telegram.enabled` | boolean | `false` | 启用 Telegram 通知 |
 | `channels.telegram.botToken` | string | `''` | Telegram 机器人 token（必需） |
 | `channels.telegram.chatId` | string | `''` | 目标聊天 ID（必需） |
@@ -283,6 +296,42 @@ export default function myPlugin(ctx: Context) {
 📊 第 2 轮 · 2 步 · 60s · 📝 开发通知插件
 ```
 
+## 💬 微信 ClawBot 设置（个人微信）
+
+微信 ClawBot 是腾讯官方开放的个人微信 Bot 通道（iLink 协议，`ilinkai.weixin.qq.com`），与第三方逆向方案不同，**合法合规、无封号风险**。
+
+1. 在设置页（或配置文件）中启用 `channels.wechat.enabled`
+2. 设置页「微信 (ClawBot)」板块会显示登录二维码，**用微信扫码并确认**
+3. 登录成功后，**在微信里给 ClawBot 发一条消息**（任意内容）——iLink 协议的主动推送必须携带从入站消息捕获的 `context_token`，没有这一步机器人无法主动联系你
+4. 之后通知即可推送到你的微信
+
+要点：
+
+- 登录凭证与 context token 持久化在 `<DSH_HOME>/notify/wechat-session.json`（权限 0600），重启后自动恢复
+- 会话过期时适配器会自动回到扫码登录流程，设置页会重新展示二维码；也可点「重新登录」手动重置
+- 默认推送给所有给 Bot 发过消息的用户；配置 `toUserIds` 可限定目标
+- 消息为纯文本（iLink text item），自动截断到 2000 字符
+
+### 双向交互（`channels.wechat.interactive`，默认开启）
+
+启用后微信不只是接收通知，还能**直接驱动 DSH**：
+
+- 🔐 **批准授权** — Agent 请求沙箱权限提升时推送「🔐 需要授权」，回复 **Y** 批准 / **N** 拒绝
+- ❓ **回答问题** — Agent 通过 `ask_user_question` 提问时推送编号选项，回复**选项序号**（多选用空格分隔）或**自由文字**
+- 💬 **续接对话** — 没有待处理交互时，任意文字回复会作为下一条用户消息注入**最近通知的会话**，排队执行
+
+交互基于 DSH Host 的 in-process API 网关（`ctx.apiProxy`）实现，与 Web UI 共享同一 pending 表：微信和浏览器**先到先得**，谁先回答谁生效，另一端的弹窗自动失效。`toUserIds` 白名单同时约束交互权限——不在白名单内的用户回复会被忽略（白名单为空时所有已知用户都可交互）。
+
+配置示例：
+
+```yaml
+channels:
+  wechat:
+    enabled: true
+    interactive: true        # 双向交互（默认 true）
+    toUserIds: []            # 推送 + 交互白名单
+```
+
 ## ✈️ Telegram 机器人设置
 
 1. 在 Telegram 中与 [@BotFather](https://t.me/BotFather) 对话，发送 `/newbot` 创建机器人，复制得到的 token（格式 `123456:ABC-DEF...`）
@@ -329,7 +378,7 @@ Webhook 会收到以下 JSON payload：
 
 ## 🖥️ 在 Web 配置通知（设置 → 通知）
 
-`dsh-notify-plugin` 会在 DSH Web 的 **设置** 侧边栏注册一个与「通用设置」「模型」「插件」同级的一级入口 **「通知」**（与 dsh-pocket 的「手机访问」同款入口形态），在那里可配置启用开关、系统 / Webhook / 企业微信 / Telegram 渠道、触发事件与标题前缀。
+`dsh-notify-plugin` 会在 DSH Web 的 **设置** 侧边栏注册一个与「通用设置」「模型」「插件」同级的一级入口 **「通知」**（与 dsh-pocket 的「手机访问」同款入口形态），在那里可配置启用开关、系统 / Webhook / 企业微信 / 微信 (ClawBot) / Telegram 渠道、触发事件与标题前缀。微信板块内置扫码登录面板（本地渲染二维码，不经过第三方服务）与登录状态展示。
 
 配置页的读写走 **loopback RPC 通道**：
 

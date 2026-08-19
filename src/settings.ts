@@ -34,6 +34,12 @@ export interface NotifySettings {
   wecomWebhookUrl: string
   /** WeCom message type: markdown or text. */
   wecomMsgType: 'markdown' | 'text'
+  /** Enable WeChat ClawBot (personal WeChat) notifications. */
+  wechatEnabled: boolean
+  /** Comma-separated iLink user IDs to push to; empty pushes to every user who messaged the bot. */
+  wechatUserIds: string
+  /** Two-way interaction: answer approvals/questions and continue conversations from WeChat. */
+  wechatInteractive: boolean
   /** Enable Telegram bot notifications. */
   telegramEnabled: boolean
   /** Telegram bot token. */
@@ -66,6 +72,9 @@ export const NOTIFY_SETTINGS_SCHEMA: z<NotifySettings> = z.object({
   wecomEnabled: z.boolean().default(false),
   wecomWebhookUrl: z.string().default(''),
   wecomMsgType: z.union([z.const('markdown'), z.const('text')]).default('markdown'),
+  wechatEnabled: z.boolean().default(false),
+  wechatUserIds: z.string().default(''),
+  wechatInteractive: z.boolean().default(true),
   telegramEnabled: z.boolean().default(false),
   telegramBotToken: z.string().default(''),
   telegramChatId: z.string().default(''),
@@ -101,6 +110,14 @@ export function settingsToConfig(settings: NotifySettings): NotifyPluginConfig {
         webhookUrl: settings.wecomWebhookUrl,
         msgType: settings.wecomMsgType,
       },
+      wechat: {
+        enabled: settings.wechatEnabled,
+        toUserIds: settings.wechatUserIds
+          .split(/[,\s]+/)
+          .map((id) => id.trim())
+          .filter(Boolean),
+        interactive: settings.wechatInteractive,
+      },
       telegram: {
         enabled: settings.telegramEnabled,
         botToken: settings.telegramBotToken,
@@ -135,6 +152,9 @@ export function configToSettings(config: NotifyPluginConfig): NotifySettings {
     wecomEnabled: config.channels?.wecom?.enabled ?? false,
     wecomWebhookUrl: config.channels?.wecom?.webhookUrl ?? '',
     wecomMsgType: config.channels?.wecom?.msgType ?? 'markdown',
+    wechatEnabled: config.channels?.wechat?.enabled ?? false,
+    wechatUserIds: (config.channels?.wechat?.toUserIds ?? []).join(', '),
+    wechatInteractive: config.channels?.wechat?.interactive ?? true,
     telegramEnabled: config.channels?.telegram?.enabled ?? false,
     telegramBotToken: config.channels?.telegram?.botToken ?? '',
     telegramChatId: config.channels?.telegram?.chatId ?? '',

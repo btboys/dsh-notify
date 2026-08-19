@@ -6,7 +6,8 @@
  */
 
 import { useEffect, useMemo, useState, type JSX } from 'react'
-import type { NotifyRpcCall, NotifyRpcConfig } from './rpc.ts'
+import QRCode from 'qrcode'
+import type { NotifyRpcCall, NotifyRpcConfig, WeChatStatus } from './rpc.ts'
 import { NOTIFY_ENDPOINTS, NOTIFY_RPC_CHANNEL } from './rpc.ts'
 import css from './NotifySettings.module.css'
 
@@ -49,6 +50,7 @@ const DEFAULTS: NotifyRpcConfig = {
     system: { enabled: true, sound: true, soundName: '' },
     webhook: { enabled: false, url: '' },
     wecom: { enabled: false, webhookUrl: '', msgType: 'markdown' },
+    wechat: { enabled: false, toUserIds: [] },
     telegram: { enabled: false, botToken: '', chatId: '', parseMode: 'HTML' },
   },
   events: {
@@ -155,6 +157,99 @@ function SelectRow(props: {
   )
 }
 
+/**
+ * WeChat ClawBot login / status panel. Polls the host for the adapter status
+ * while the channel is enabled and renders the login QR code (encoded locally
+ * from the iLink QR payload) when the host is waiting for a scan.
+ */
+function WeChatPanel(props: {
+  rpcCall: NotifyRpcCall
+  t: (key: string) => string
+  enabled: boolean
+}): JSX.Element | null {
+  const { t } = props
+  const [status, setStatus] = useState<WeChatStatus | null>(null)
+  const [qrUrl, setQrUrl] = useState<string | null>(null)
+  const [relogging, setRelogging] = useState(false)
+
+  // Poll the adapter status while the channel is enabled.
+  useEffect(() => {
+    if (!props.enabled) {
+      setStatus(null)
+      return
+    }
+    let cancelled = false
+    const refresh = async (): Promise<void> => {
+      const res = await props.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.wechatStatus, {})
+      if (!cancelled && res.ok && res.value && typeof res.value === 'object') {
+        setStatus(res.value as WeChatStatus)
+      }
+    }
+    void refresh()
+    const timer = setInterval(() => { void refresh() }, 5000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [props.enabled])
+
+  // Encode the QR payload locally (never sent to a third-party QR service).
+  // NOTE: static import — the DSH module loader ships the client as a single
+  // self-contained file; a dynamic import() would emit chunks the loader's
+  // require() cannot resolve.
+  const qrContent = status?.state === 'login' ? status.qrContent : undefined
+  useEffect(() => {
+    let cancelled = false
+    if (!qrContent) {
+      setQrUrl(null)
+      return
+    }
+    QRCode.toDataURL(qrContent, { width: 220, margin: 1 })
+      .then((url) => { if (!cancelled) setQrUrl(url) })
+      .catch(() => { if (!cancelled) setQrUrl(null) })
+    return () => { cancelled = true }
+  }, [qrContent])
+
+  const relogin = async (): Promise<void> => {
+    setRelogging(true)
+    const res = await props.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.wechatRelogin, {})
+    if (res.ok && res.value && typeof res.value === 'object') {
+      setStatus(res.value as WeChatStatus)
+    }
+    setRelogging(false)
+  }
+
+  if (!props.enabled) return null
+
+  return (
+    <div className={css.field}>
+      {status?.state === 'ready' ? (
+        <p className={css.hint}>
+          {t('wechatStatusReady')}{status.accountId ? ` (${status.accountId})` : ''}
+          {' · '}{t('wechatKnownUsers')}: {status.knownUsers.length}
+        </p>
+      ) : null}
+      {status?.state === 'ready' && status.knownUsers.length === 0 ? (
+        <p className={css.hint}>{t('wechatNoUsers')}</p>
+      ) : null}
+      {status?.state === 'login' ? (
+        <div className={css.qrBox}>
+          {qrUrl ? <img className={css.qrImg} src={qrUrl} alt={t('wechatScanHint')} /> : <p className={css.hint}>{t('wechatQrLoading')}</p>}
+          <p className={css.hint}>{t('wechatScanHint')}</p>
+        </div>
+      ) : null}
+      {status?.state === 'error' ? (
+        <p className={css.failed} role="alert">{t('wechatStatusError')}: {status.error ?? ''}</p>
+      ) : null}
+      <div>
+        <button type="button" className={css.discard} disabled={relogging} onClick={() => void relogin()}>
+          {relogging ? t('wechatRelogging') : t('wechatRelogin')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** The full notify configuration page. */
 export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
   const { t } = props
@@ -223,6 +318,7 @@ export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
   const sysOn = cd('channels.system.enabled', true)
   const webhookOn = cd('channels.webhook.enabled', false)
   const wecomOn = cd('channels.wecom.enabled', false)
+  const wechatOn = cd('channels.wechat.enabled', false)
   const telegramOn = cd('channels.telegram.enabled', false)
 
   return (
@@ -263,6 +359,19 @@ export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
           onChange={(v) => setField('channels.wecom.webhookUrl', v)} />
         <SelectRow t={t} labelKey="wecomMsgType" options={['markdown', 'text']} value={cs('channels.wecom.msgType', 'markdown')}
           disabled={!enabled() || !wecomOn} onChange={(v) => setField('channels.wecom.msgType', v)} />
+      </section>
+
+      <section className={css.section} aria-label={t('channelsWechat')}>
+        <h3 className={css.sectionTitle}>{t('channelsWechat')}</h3>
+        <ToggleRow t={t} labelKey="wechatEnabled" hintKey="wechatEnabledHint" checked={wechatOn}
+          disabled={!enabled()} onChange={(v) => setField('channels.wechat.enabled', v)} />
+        <TextRow t={t} labelKey="wechatUserIds" hintKey="wechatUserIdsHint" placeholder="o9cq8…@im.wechat, o9cq8…@im.wechat"
+          value={(() => { const v = c('channels.wechat.toUserIds'); return Array.isArray(v) ? v.join(', ') : '' })()}
+          disabled={!enabled() || !wechatOn}
+          onChange={(v) => setField('channels.wechat.toUserIds', v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))} />
+        <ToggleRow t={t} labelKey="wechatInteractive" hintKey="wechatInteractiveHint" checked={cd('channels.wechat.interactive', true)}
+          disabled={!enabled() || !wechatOn} onChange={(v) => setField('channels.wechat.interactive', v)} />
+        <WeChatPanel rpcCall={props.rpcCall} t={t} enabled={enabled() && wechatOn} />
       </section>
 
       <section className={css.section} aria-label={t('channelsTelegram')}>

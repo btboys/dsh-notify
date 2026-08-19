@@ -17,6 +17,7 @@ import type {
   SystemNotifyConfig,
   TelegramNotifyConfig,
   WebhookNotifyConfig,
+  WeChatNotifyConfig,
   WeComNotifyConfig,
 } from './types.js'
 
@@ -27,7 +28,7 @@ const CONFIG_REL = join('notify', 'config.json')
  * Resolve DSH_HOME, falling back to ~/.dsh.
  * @returns the absolute DSH home directory.
  */
-function dshHome(): string {
+export function dshHome(): string {
   const fromEnv = process.env.DSH_HOME
   return fromEnv && fromEnv.length > 0 ? fromEnv : join(homedir(), '.dsh')
 }
@@ -73,6 +74,7 @@ export function mergePersisted(base: NotifyPluginConfig, persisted: NotifyPlugin
       system: { ...base.channels?.system, ...persisted.channels?.system } as SystemNotifyConfig,
       webhook: { ...base.channels?.webhook, ...persisted.channels?.webhook } as WebhookNotifyConfig,
       wecom: { ...base.channels?.wecom, ...persisted.channels?.wecom } as WeComNotifyConfig,
+      wechat: { ...base.channels?.wechat, ...persisted.channels?.wechat } as WeChatNotifyConfig,
       telegram: { ...base.channels?.telegram, ...persisted.channels?.telegram } as TelegramNotifyConfig,
     },
     events: { ...base.events, ...persisted.events } as NotifyEventFilter,

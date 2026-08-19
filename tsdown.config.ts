@@ -24,6 +24,15 @@ const id = 'dsh-notify-plugin'
 const CLIENT_EXTERNALS = ['react', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives']
 
 /**
+ * qrcode publishes a node entry (lib/index.js, requires fs) and a browser
+ * entry (lib/browser.js). tsdown forces platform 'node' for cjs output, so
+ * the package's `browser` field is ignored and the fs renderers get bundled
+ * with an unsatisfiable require("fs") — the DSH loader has no fs factory.
+ * Pin the browser entry explicitly.
+ */
+const CLIENT_ALIASES = { qrcode: 'qrcode/lib/browser.js' }
+
+/**
  * Virtual-id wrapper keeping module CSS away from tsdown's own css pipeline
  * (which requires @tsdown/css). Wrapping the physical file in a virtual id
  * with a non-`.css` suffix routes it to the loader below.
@@ -43,6 +52,7 @@ export default defineConfig({
   sourcemap: true,
   clean: false,
   external: [...CLIENT_EXTERNALS],
+  alias: CLIENT_ALIASES,
   // tsdown auto-externalizes package dependencies; anything NOT in the loader
   // module table must inline instead — a require() the table cannot answer is
   // a guaranteed runtime throw.

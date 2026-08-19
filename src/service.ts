@@ -4,6 +4,8 @@ import { NotificationAdapter } from './adapters/base.js'
 import { SystemNotificationAdapter } from './adapters/system.js'
 import { WebhookNotificationAdapter } from './adapters/webhook.js'
 import { WeComNotificationAdapter } from './adapters/wecom.js'
+import { WeChatClawBotAdapter, WeChatAdapterStatus } from './adapters/wechat.js'
+import { ApiProxyLike, InteractionBridge } from './interaction.js'
 import { TelegramNotificationAdapter } from './adapters/telegram.js'
 import {
   NotifyEvent,
@@ -12,6 +14,7 @@ import {
   SystemNotifyConfig,
   TelegramNotifyConfig,
   WebhookNotifyConfig,
+  WeChatNotifyConfig,
   WeComNotifyConfig,
 } from './types.js'
 
@@ -24,6 +27,7 @@ const DEFAULT_CONFIG: Required<NotifyPluginConfig> = {
     system: { enabled: true, sound: true, icon: undefined },
     webhook: { enabled: false, url: '', method: 'POST', timeout: 5000, headers: {} },
     wecom: { enabled: false, webhookUrl: '', mentions: [], msgType: 'markdown' },
+    wechat: { enabled: false, toUserIds: [], interactive: true, sessionFile: '', channelVersion: '1.0.2' },
     telegram: { enabled: false, botToken: '', chatId: '', parseMode: 'HTML', disableNotification: false, timeout: 5000 },
   },
   events: {
@@ -46,6 +50,10 @@ const DEFAULT_CONFIG: Required<NotifyPluginConfig> = {
 export class NotifyService extends Service {
   private config: Required<NotifyPluginConfig>
   private adapters: NotificationAdapter[] = []
+  /** Whether session event listeners have been registered (at most once). */
+  private listenersRegistered = false
+  /** WeChat two-way interaction bridge; null when apiProxy is unavailable. */
+  private bridge: InteractionBridge | null = null
   
   constructor(ctx: Context, config?: NotifyPluginConfig) {
     super(ctx, 'notify')
@@ -61,6 +69,55 @@ export class NotifyService extends Service {
     
     // Mixin methods to context (using type assertion to bypass strict typing)
     ctx.mixin('notify', ['send', 'isEnabled'] as any)
+  }
+  
+  /**
+   * Attach the host API gateway and start the WeChat interaction bridge.
+   * Called by the plugin entry through `ctx.inject(['apiProxy'], …)` once the
+   * gateway service is available; the bridge survives adapter rebuilds because
+   * its hooks resolve the CURRENT wechat adapter on every call.
+   */
+  setApiProxy(apiProxy: ApiProxyLike): void {
+    if (this.bridge) return
+    this.bridge = new InteractionBridge(this.ctx, apiProxy, {
+      pushText: (text) => this.getWechatAdapter()?.pushText(text) ?? Promise.resolve(),
+      canInteract: (userId) => this.getWechatAdapter()?.canInteract(userId) ?? false,
+    })
+    this.syncInteraction()
+    this.ctx.logger.info('[notify] WeChat interaction bridge attached (apiProxy available)')
+  }
+  
+  /** The current WeChat adapter, if the channel is initialized. */
+  private getWechatAdapter(): WeChatClawBotAdapter | undefined {
+    return this.adapters.find(
+      (a): a is WeChatClawBotAdapter => a.name === 'wechat' && a instanceof WeChatClawBotAdapter,
+    )
+  }
+  
+  /**
+   * Start/stop the interaction bridge and (de)wire the adapter's inbound
+   * message hook according to the live config. Called after every adapter
+   * (re)build and config update.
+   */
+  private syncInteraction(): void {
+    const adapter = this.getWechatAdapter()
+    const interactive = this.config.enabled
+      && this.config.channels.wechat?.enabled === true
+      && this.config.channels.wechat?.interactive !== false
+    
+    if (adapter) {
+      adapter.onUserMessage = interactive && this.bridge
+        ? (userId, text) => { void this.bridge!.handleReply(userId, text) }
+        : undefined
+    }
+    
+    if (this.bridge) {
+      if (interactive && adapter) {
+        this.bridge.start()
+      } else {
+        this.bridge.dispose()
+      }
+    }
   }
   
   /**
@@ -98,6 +155,9 @@ export class NotifyService extends Service {
     // Emit internal event
     this.ctx.emit(`notify/send`, event)
     this.ctx.emit(`notify/${event.type}`, event)
+    
+    // Track the notified session so a free-text WeChat reply continues it.
+    this.bridge?.noteNotification(event.metadata?.sessionId, event.metadata?.workspace)
     
     // Send to all enabled adapters
     const results = await Promise.allSettled(
@@ -180,18 +240,115 @@ export class NotifyService extends Service {
   }
   
   /**
-   * Get current configuration
+   * Current configuration
    */
   getConfig(): Required<NotifyPluginConfig> {
     return { ...this.config }
   }
+
+  /**
+   * Status of the WeChat ClawBot adapter (login state, QR payload, reachable
+   * users) for the settings page. Returns `{ state: 'disabled', knownUsers: [] }`
+   * when the channel is off or the adapter failed to initialize.
+   */
+  getWechatStatus(): WeChatAdapterStatus {
+    const adapter = this.getWechatAdapter()
+    if (!adapter) {
+      return { state: 'disabled', knownUsers: [] }
+    }
+    return adapter.getStatus()
+  }
+
+  /**
+   * Forget the persisted WeChat session and restart the QR login flow.
+   * No-op when the channel is not enabled.
+   */
+  async reloginWechat(): Promise<WeChatAdapterStatus> {
+    const adapter = this.getWechatAdapter()
+    if (!adapter) {
+      return { state: 'disabled', knownUsers: [] }
+    }
+    await adapter.relogin()
+    return adapter.getStatus()
+  }
   
   /**
-   * Update configuration at runtime
+   * Update configuration at runtime.
+   *
+   * Merges the patch into the current config and REBUILDS the adapter list so
+   * channel enable/disable changes take effect immediately. Without the
+   * rebuild, `send()` would keep dispatching to adapter instances created at
+   * startup whose readonly `enabled` flag still reflects the old config — a
+   * channel disabled in the settings page would keep receiving notifications
+   * (and a channel enabled at runtime would never start working).
    */
   updateConfig(newConfig: Partial<NotifyPluginConfig>): void {
-    this.config = this.mergeConfig({ ...this.config, ...newConfig })
+    this.config = this.mergeConfig(this.deepMerge(this.config, newConfig))
+    
+    if (this.config.enabled) {
+      this.rebuildAdapters()
+      // The plugin may have started disabled (no listeners registered); once
+      // it becomes enabled at runtime the session listeners must be attached.
+      if (!this.listenersRegistered) {
+        this.registerEventListeners()
+      }
+    } else {
+      // Plugin disabled at runtime: tear down all adapters so nothing sends.
+      this.teardownAdapters()
+    }
+    this.syncInteraction()
+    
     this.ctx.logger.info('[notify] Configuration updated')
+  }
+  
+  /**
+   * Field-wise deep merge of the `channels` and `events` groups so a partial
+   * update (e.g. only `channels.wecom`) does not reset sibling channels to
+   * defaults. Top-level scalars from the patch win.
+   */
+  private deepMerge(base: Required<NotifyPluginConfig>, patch: Partial<NotifyPluginConfig>): NotifyPluginConfig {
+    const patchChannels = patch.channels || {}
+    return {
+      ...base,
+      ...patch,
+      channels: {
+        system: { ...base.channels.system, ...(patchChannels.system as object | undefined) },
+        webhook: { ...base.channels.webhook, ...(patchChannels.webhook as object | undefined) },
+        wecom: { ...base.channels.wecom, ...(patchChannels.wecom as object | undefined) },
+        wechat: { ...base.channels.wechat, ...(patchChannels.wechat as object | undefined) },
+        telegram: { ...base.channels.telegram, ...(patchChannels.telegram as object | undefined) },
+      } as NotifyPluginConfig['channels'],
+      events: { ...base.events, ...(patch.events || {}) },
+    }
+  }
+  
+  /**
+   * Dispose current adapters and rebuild them from the live config.
+   */
+  private rebuildAdapters(): void {
+    this.teardownAdapters()
+    this.initializeAdapters()
+  }
+  
+  /**
+   * Dispose and drop all current adapters (best-effort, errors are logged).
+   */
+  private teardownAdapters(): void {
+    const previous = this.adapters
+    this.adapters = []
+    for (const adapter of previous) {
+      if (!adapter.dispose) continue
+      try {
+        const result = adapter.dispose()
+        if (result instanceof Promise) {
+          result.catch((error) => {
+            this.ctx.logger.error('[notify] Error disposing adapter %s:', adapter.name, error)
+          })
+        }
+      } catch (error) {
+        this.ctx.logger.error('[notify] Error disposing adapter %s:', adapter.name, error)
+      }
+    }
   }
   
   /**
@@ -200,19 +357,8 @@ export class NotifyService extends Service {
   async dispose(): Promise<void> {
     this.ctx.logger.info('[notify] Disposing notification service')
     
-    await Promise.all(
-      this.adapters.map(async (adapter) => {
-        if (adapter.dispose) {
-          try {
-            await adapter.dispose()
-          } catch (error) {
-            this.ctx.logger.error('[notify] Error disposing adapter %s:', adapter.name, error)
-          }
-        }
-      })
-    )
-    
-    this.adapters = []
+    this.bridge?.dispose()
+    this.teardownAdapters()
   }
   
   /**
@@ -252,6 +398,13 @@ export class NotifyService extends Service {
           parseMode: (userChannels.telegram as any)?.parseMode ?? defChannels.telegram!.parseMode,
           disableNotification: (userChannels.telegram as any)?.disableNotification ?? defChannels.telegram!.disableNotification,
           timeout: (userChannels.telegram as any)?.timeout ?? defChannels.telegram!.timeout,
+        },
+        wechat: {
+          enabled: (userChannels.wechat as any)?.enabled ?? defChannels.wechat!.enabled,
+          toUserIds: (userChannels.wechat as any)?.toUserIds ?? defChannels.wechat!.toUserIds,
+          interactive: (userChannels.wechat as any)?.interactive ?? defChannels.wechat!.interactive,
+          sessionFile: (userChannels.wechat as any)?.sessionFile ?? defChannels.wechat!.sessionFile,
+          channelVersion: (userChannels.wechat as any)?.channelVersion ?? defChannels.wechat!.channelVersion,
         },
       },
       events: {
@@ -301,6 +454,19 @@ export class NotifyService extends Service {
       }
     }
     
+    // WeChat (ClawBot / iLink) notification adapter. Initialized whenever
+    // enabled: a missing session is normal — the adapter runs the QR login
+    // flow and reports progress through getWechatStatus().
+    if (channels.wechat?.enabled) {
+      try {
+        const adapter = new WeChatClawBotAdapter(this.ctx, channels.wechat)
+        this.adapters.push(adapter)
+        this.ctx.logger.info('[notify] WeChat ClawBot notification adapter initialized')
+      } catch (error) {
+        this.ctx.logger.warn('[notify] Failed to initialize WeChat adapter:', error)
+      }
+    }
+
     // Telegram notification adapter
     if (channels.telegram?.enabled && channels.telegram.botToken && channels.telegram.chatId) {
       try {
@@ -323,6 +489,10 @@ export class NotifyService extends Service {
    * Register event listeners for DSH lifecycle events
    */
   private registerEventListeners(): void {
+    // Guard against double registration (constructor + runtime re-enable).
+    if (this.listenersRegistered) return
+    this.listenersRegistered = true
+    
     // Debug file for diagnosing event delivery in a running DSH
     const DEBUG_LOG = '/tmp/dsh-notify-debug.log'
     const debug = (msg: string, ...rest: any[]) => {
@@ -452,7 +622,7 @@ export class NotifyService extends Service {
     await this.notifyConfirmationRequired(
       workspace ? `❓ [${workspace}] 需要回答` : '❓ 需要回答',
       lines.join('\n'),
-      { questions: args?.questions }
+      { questions: args?.questions, sessionId: session?.id, workspace }
     )
     this.ctx.logger.debug('[notify] user question notification sent')
   }
@@ -496,7 +666,7 @@ export class NotifyService extends Service {
     await this.notifyAuthorizationRequired(
       workspace ? `🔐 [${workspace}] 需要授权` : '🔐 需要授权',
       lines.join('\n'),
-      { toolName, reason, callId }
+      { toolName, reason, callId, sessionId: session?.id, workspace }
     )
     this.ctx.logger.debug('[notify] approval request notification sent')
   }

@@ -3,7 +3,9 @@
  */
 
 import { Context } from '@deepseek-ai/cordis'
+import { createServer } from 'node:http'
 import notifyPlugin from '../lib/index.js'
+import { NotifyService } from '../lib/index.js'
 
 /** Create a test Context with the host services the plugin injects. */
 function makeCtx() {
@@ -117,6 +119,66 @@ async function runTests() {
     message: 'This should not be sent',
   })
   console.log('  - Notification correctly skipped (plugin disabled)')
+  console.log()
+  
+  // Test 7: Regression — disabling a channel at runtime must stop its sends
+  console.log('✓ Test 7: Runtime channel disable/enable takes effect immediately')
+  {
+    // Local HTTP server stands in for the webhook endpoint.
+    let requests = 0
+    const server = createServer((req, res) => {
+      requests++
+      res.writeHead(200)
+      res.end('ok')
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const url = `http://127.0.0.1:${server.address().port}/hook`
+    
+    const ctx3 = makeCtx()
+    const service = new NotifyService(ctx3, {
+      enabled: true,
+      channels: { webhook: { enabled: true, url } },
+      events: { conversationCompleted: true },
+    })
+    
+    const sendOnce = () => service.send({
+      type: 'conversationCompleted',
+      title: 'Runtime Toggle Test',
+      message: 'checking adapter rebuild',
+    })
+    
+    // 1) enabled at startup → delivered
+    await sendOnce()
+    console.log('  - enabled at startup, requests:', requests, requests === 1 ? '✓' : '✗ EXPECTED 1')
+    
+    // 2) disable the webhook channel at runtime → must NOT be delivered
+    service.updateConfig({ channels: { webhook: { enabled: false, url } } })
+    await sendOnce()
+    console.log('  - after runtime disable, requests:', requests, requests === 1 ? '✓' : '✗ STILL SENDING (bug)')
+    
+    // 3) re-enable at runtime → delivered again
+    service.updateConfig({ channels: { webhook: { enabled: true, url } } })
+    await sendOnce()
+    console.log('  - after runtime re-enable, requests:', requests, requests === 2 ? '✓' : '✗ EXPECTED 2')
+    
+    // 4) partial channel update must not wipe sibling channels to defaults
+    const cfgAfter = service.getConfig()
+    console.log('  - sibling system channel survived partial update:',
+      typeof cfgAfter.channels.system.enabled === 'boolean' ? '✓' : '✗')
+    
+    // 5) disabling the whole plugin tears down adapters too
+    service.updateConfig({ enabled: false })
+    await sendOnce()
+    console.log('  - after plugin disable, requests:', requests, requests === 2 ? '✓' : '✗ STILL SENDING (bug)')
+    
+    await service.dispose()
+    await new Promise((resolve) => server.close(resolve))
+    await ctx3.fiber.dispose()
+    
+    if (requests !== 2) {
+      throw new Error(`Regression: expected exactly 2 webhook requests, got ${requests}`)
+    }
+  }
   console.log()
   
   // Cleanup

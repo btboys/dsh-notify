@@ -1,6 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { NotifyService } from './service.js'
 import { NotifyPluginConfig } from './types.js'
+import { ApiProxyLike } from './interaction.js'
 import { configToSettings, installNotifySettings } from './settings.js'
 import { installNotifyRpc, NOTIFY_RPC_CHANNEL } from './notify-rpc.js'
 import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js'
@@ -12,6 +13,7 @@ import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js
  * - System notifications (desktop)
  * - Webhook notifications (HTTP POST)
  * - WeCom bot notifications (Enterprise WeChat)
+ * - WeChat ClawBot notifications (personal WeChat, Tencent iLink protocol)
  * - Telegram bot notifications
  *
  * Triggers on:
@@ -30,6 +32,11 @@ import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js
  * dsh-pocket uses for its RPC channel) guarantees the /dsh-notify RPC channel
  * can be mounted. `settings` is deliberately NOT declared: it is not a Cordis
  * host service, so declaring it would block activation while Cordis waits.
+ * `apiProxy` (the API gateway powering WeChat two-way interaction) is likewise
+ * NOT a hard inject: cordis inject declarations are all-required and would
+ * block activation on deployments without it. It is wired through
+ * `ctx.inject(...)` below — a child fiber that runs once the service appears
+ * and never blocks the notification core.
  */
 export const inject = ['connection', 'webServer']
 
@@ -49,6 +56,14 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
   const effective = mergePersisted(config || {}, persisted)
   const service = new NotifyService(ctx, effective)
 
+  // Wire the WeChat interaction bridge as soon as the host API gateway is
+  // available (web profile: immediately; other deployments: never, and
+  // notifications keep working regardless). The callback's fiber carries
+  // apiProxy in its own inject set, so the property access resolves.
+  ctx.inject(['apiProxy'], (proxyCtx) => {
+    service.setApiProxy((proxyCtx as unknown as { apiProxy: ApiProxyLike }).apiProxy)
+  })
+
   // Expose the settings (read/write) channel to the browser so the "通知"
   // settings page can view and edit the configuration. `connection` is declared
   // via `inject`, so `ctx.get('connection').rpc` resolves here.
@@ -60,6 +75,8 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
       service.updateConfig(partial as Partial<NotifyPluginConfig>)
       persistConfig(service.getConfig())
     },
+    wechatStatus: () => service.getWechatStatus(),
+    wechatRelogin: () => service.reloginWechat(),
   }, { warn: (...args) => ctx.logger.warn(...(args as [string, ...unknown[]])) })
 
   // Keep the legacy settings-namespace registration for consumers that read
@@ -100,6 +117,10 @@ export * from './adapters/base.js'
 export { SystemNotificationAdapter } from './adapters/system.js'
 export { WebhookNotificationAdapter } from './adapters/webhook.js'
 export { WeComNotificationAdapter } from './adapters/wecom.js'
+export { WeChatClawBotAdapter } from './adapters/wechat.js'
+export type { WeChatAdapterState, WeChatAdapterStatus } from './adapters/wechat.js'
+export { InteractionBridge } from './interaction.js'
+export type { ApiProxyLike, InteractionBridgeHooks, MuxFrameView, QuestionItem, QuestionOption } from './interaction.js'
 export { TelegramNotificationAdapter } from './adapters/telegram.js'
 export { NOTIFY_SETTINGS_NAMESPACE, NOTIFY_SETTINGS_SCHEMA, settingsToConfig, configToSettings } from './settings.js'
 export type { NotifySettings } from './settings.js'
