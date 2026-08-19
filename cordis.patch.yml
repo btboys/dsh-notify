@@ -40,4 +40,5 @@
           conversationFailed: true
           authorizationRequired: true
           confirmationRequired: true
+          todoProgress: true
         titlePrefix: ''

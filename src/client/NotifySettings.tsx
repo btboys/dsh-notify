@@ -59,6 +59,7 @@ const DEFAULTS: NotifyRpcConfig = {
     conversationFailed: true,
     authorizationRequired: true,
     confirmationRequired: true,
+    todoProgress: true,
   },
   titlePrefix: '',
 }
@@ -392,7 +393,7 @@ export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
 
       <section className={css.section} aria-label={t('eventsTitle')}>
         <h3 className={css.sectionTitle}>{t('eventsTitle')}</h3>
-        {(['conversationCompleted', 'conversationPaused', 'conversationFailed', 'authorizationRequired', 'confirmationRequired'] as const).map((key) => (
+        {(['conversationCompleted', 'conversationPaused', 'conversationFailed', 'authorizationRequired', 'confirmationRequired', 'todoProgress'] as const).map((key) => (
           <ToggleRow key={key} t={t} labelKey={key} hintKey={`${key}Hint`} checked={cd(`events.${key}`, true)}
             disabled={!enabled()} onChange={(v) => setField(`events.${key}`, v)} />
         ))}

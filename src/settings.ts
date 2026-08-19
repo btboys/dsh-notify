@@ -56,6 +56,8 @@ export interface NotifySettings {
   notifyOnFailed: boolean
   notifyOnAuthorization: boolean
   notifyOnConfirmation: boolean
+  /** Push the agent's TODO list and progress (todo_write tool calls). */
+  notifyOnTodo: boolean
   /** Title prefix. */
   titlePrefix: string
 }
@@ -87,6 +89,7 @@ export const NOTIFY_SETTINGS_SCHEMA: z<NotifySettings> = z.object({
   notifyOnFailed: z.boolean().default(true),
   notifyOnAuthorization: z.boolean().default(true),
   notifyOnConfirmation: z.boolean().default(true),
+  notifyOnTodo: z.boolean().default(true),
   titlePrefix: z.string().default(''),
 })
 
@@ -135,6 +138,7 @@ export function settingsToConfig(settings: NotifySettings): NotifyPluginConfig {
       conversationFailed: settings.notifyOnFailed,
       authorizationRequired: settings.notifyOnAuthorization,
       confirmationRequired: settings.notifyOnConfirmation,
+      todoProgress: settings.notifyOnTodo,
     },
     titlePrefix: settings.titlePrefix,
   }
@@ -169,6 +173,7 @@ export function configToSettings(config: NotifyPluginConfig): NotifySettings {
     notifyOnFailed: config.events?.conversationFailed ?? true,
     notifyOnAuthorization: config.events?.authorizationRequired ?? true,
     notifyOnConfirmation: config.events?.confirmationRequired ?? true,
+    notifyOnTodo: config.events?.todoProgress ?? true,
     titlePrefix: config.titlePrefix ?? '',
   }
 }

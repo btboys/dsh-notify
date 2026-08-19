@@ -407,7 +407,9 @@ export class TelegramNotificationAdapter implements NotificationAdapter {
     return extra
       .map(([key, value]) => {
         const display = typeof value === 'string' ? value : JSON.stringify(value)
-        if (md) return `- ${this.escapeMarkdown(key)}: ${this.escapeMarkdown(display)}`
+        // MarkdownV2: a raw '- ' at line start is a RESERVED character and
+        // gets the whole message rejected with a 400 — use a bullet instead.
+        if (md) return `• ${this.escapeMarkdown(key)}: ${this.escapeMarkdown(display)}`
         if (html) return `- ${this.escapeHtml(key)}: ${this.escapeHtml(display)}`
         return `- ${key}: ${display}`
       })

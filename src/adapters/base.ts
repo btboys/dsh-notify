@@ -25,6 +25,8 @@ export interface NotificationAdapter {
 const STANDARD_METADATA_KEYS = new Set([
   'turn', 'reason', 'durationMs', 'userPrompt', 'reply', 'tools', 'steps',
   'title', 'workspace', 'sessionId', 'error', 'questions', 'toolName', 'callId',
+  // todoProgress — already conveyed by the checklist body and progress count
+  'total', 'completed', 'inProgress', 'pending', 'todos',
 ])
 
 /**

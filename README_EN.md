@@ -183,6 +183,7 @@ events:
   conversationFailed: true         # conversation failed
   authorizationRequired: true      # authorization required
   confirmationRequired: true       # confirmation/question required
+  todoProgress: true               # TODO progress (task list appears or advances)
 
 # Notification title prefix (empty by default; e.g. '[MyApp]' to tag all titles)
 titlePrefix: ''
@@ -224,6 +225,7 @@ titlePrefix: ''
 | `conversationPaused` | `⏸️ [workspace] 对话暂停` | Agent interrupted / awaiting input (`turn/end` reason=aborted/blocked) |
 | `conversationFailed` | `❌ [workspace] 对话失败` | Agent hit an error (`turn/end` reason=error) |
 | `confirmationRequired` | `❓ [workspace] 需要回答` | Agent asks you via `ask_user_question` |
+| `todoProgress` | `📋 [workspace] TODO 进度 2/5` | Agent publishes/updates its task list via `todo_write`; pushes only when progress changes (pure in-progress churn stays silent) |
 | `authorizationRequired` | `🔐 [workspace] 需要授权` | Agent requests sandbox escalation (`approval/asked`) |
 
 ### Notification content example

@@ -36,6 +36,7 @@ const DEFAULT_CONFIG: Required<NotifyPluginConfig> = {
     conversationFailed: true,
     authorizationRequired: true,
     confirmationRequired: true,
+    todoProgress: true,
   },
   // Empty by default: no title prefix is added. Set e.g. "[DSH]" in config
   // to prepend a product label to every notification title.
@@ -54,6 +55,13 @@ export class NotifyService extends Service {
   private listenersRegistered = false
   /** WeChat two-way interaction bridge; null when apiProxy is unavailable. */
   private bridge: InteractionBridge | null = null
+  /**
+   * Last pushed TODO-list signature per session, for dedupe. todo_write fires
+   * on every task status flip; we only push when the PROGRESS actually moves
+   * (completed count, total, or item contents change), not on pure
+   * pending↔in_progress churn.
+   */
+  private lastTodoSignature = new Map<string, string>()
   
   constructor(ctx: Context, config?: NotifyPluginConfig) {
     super(ctx, 'notify')
@@ -323,6 +331,18 @@ export class NotifyService extends Service {
   async notifyConfirmationRequired(title: string, message: string, metadata?: any) {
     await this.send({
       type: 'confirmationRequired',
+      title,
+      message,
+      metadata,
+    })
+  }
+
+  /**
+   * Convenience method: notify the agent's TODO list and its progress
+   */
+  async notifyTodoProgress(title: string, message: string, metadata?: any) {
+    await this.send({
+      type: 'todoProgress',
       title,
       message,
       metadata,
@@ -610,6 +630,10 @@ export class NotifyService extends Service {
         if (name === 'ask_user_question') {
           await this.handleUserQuestion(session, event)
         }
+        // "todo_write" publishes the agent's task list — push TODO progress.
+        if (name === 'todo_write') {
+          await this.handleTodoUpdate(session, event)
+        }
         return
       }
       
@@ -728,6 +752,79 @@ export class NotifyService extends Service {
     } catch {
       return {}
     }
+  }
+
+  /**
+   * Handle a `todo_write` tool call: the agent published/updated its task
+   * list. Emits a "TODO 进度" notification with the checklist and a
+   * completed/total progress count.
+   *
+   * Noise control: todo_write fires on EVERY status flip, so a push is sent
+   * only when the progress signature actually moves — completed count, total
+   * count, or item contents changed since the last push for this session.
+   * Pure pending↔in_progress churn (the agent merely picking up the next
+   * task) does not push.
+   * @param session - the Session instance.
+   * @param event - the tool/call event.
+   */
+  private async handleTodoUpdate(session: any, event: any): Promise<void> {
+    this.ctx.logger.debug('[notify] todo_write tool call received')
+
+    const args = this.parseToolArguments(event.data?.arguments)
+    const todos: Array<{ content?: string; status?: string }> =
+      Array.isArray(args?.todos) ? args.todos : []
+    if (todos.length === 0) return
+
+    const total = todos.length
+    const completed = todos.filter((t) => t?.status === 'completed').length
+    const inProgress = todos.filter((t) => t?.status === 'in_progress').length
+    const pending = total - completed - inProgress
+
+    // Dedupe: skip when progress-relevant state is unchanged since the last
+    // push for this session. The signature deliberately excludes which item
+    // is in_progress so pure working-status churn stays silent.
+    const sessionKey = typeof session?.id === 'string' ? session.id : ''
+    const signature = JSON.stringify([
+      total,
+      completed,
+      todos.map((t) => `${t?.status === 'completed' ? 'c' : 'o'}:${t?.content ?? ''}`),
+    ])
+    if (this.lastTodoSignature.get(sessionKey) === signature) {
+      this.ctx.logger.debug('[notify] todo progress unchanged, skipping push')
+      return
+    }
+    this.lastTodoSignature.set(sessionKey, signature)
+    // Bound the map so long-running hosts do not accumulate dead sessions.
+    if (this.lastTodoSignature.size > 200) {
+      const oldest = this.lastTodoSignature.keys().next().value
+      if (oldest !== undefined) this.lastTodoSignature.delete(oldest)
+    }
+
+    // Workspace context for the title.
+    const cwd: string | undefined = session?.header?.cwd
+    const workspace = cwd ? cwd.split('/').filter(Boolean).pop() || cwd : undefined
+
+    // Checklist body: ✅ completed / 🔄 in progress / ⬜ pending. Each item is
+    // truncated and the list capped so a huge plan stays one compact push.
+    const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s)
+    const ICON: Record<string, string> = { completed: '✅', in_progress: '🔄', pending: '⬜' }
+    const MAX_ITEMS = 10
+    const lines: string[] = []
+    lines.push(`📊 进度: ${completed}/${total} 已完成`)
+    for (const todo of todos.slice(0, MAX_ITEMS)) {
+      const icon = ICON[todo?.status ?? ''] ?? '⬜'
+      lines.push(`${icon} ${truncate(String(todo?.content ?? ''), 60)}`)
+    }
+    if (total > MAX_ITEMS) {
+      lines.push(`… 还有 ${total - MAX_ITEMS} 项`)
+    }
+
+    await this.notifyTodoProgress(
+      workspace ? `📋 [${workspace}] TODO 进度 ${completed}/${total}` : `📋 TODO 进度 ${completed}/${total}`,
+      lines.join('\n'),
+      { total, completed, inProgress, pending, todos, sessionId: session?.id, workspace }
+    )
+    this.ctx.logger.debug('[notify] todo progress notification sent (%d/%d)', completed, total)
   }
   
   /**

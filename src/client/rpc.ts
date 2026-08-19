@@ -34,6 +34,7 @@ export interface NotifyRpcConfig {
     conversationFailed?: boolean
     authorizationRequired?: boolean
     confirmationRequired?: boolean
+    todoProgress?: boolean
   }
   titlePrefix?: string
 }

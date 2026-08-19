@@ -222,6 +222,76 @@ async function runTests() {
   }
   console.log()
   
+  // Test 9: todo_write tool call pushes TODO progress, with dedupe
+  console.log('✓ Test 9: todo_write pushes TODO progress (dedupe on unchanged progress)')
+  {
+    const ctx5 = makeCtx()
+    const service = new NotifyService(ctx5, {
+      enabled: true,
+      channels: {}, // no adapters — we capture the notify/send event instead
+      events: { todoProgress: true },
+    })
+
+    const sent = []
+    ctx5.on('notify/send', (event) => sent.push(event))
+
+    const fakeSession = { id: 'session-todo', header: { cwd: '/Users/test/notify' }, log: [] }
+    const todoCall = (todos) => ({
+      type: 'tool/call',
+      data: { name: 'todo_write', arguments: JSON.stringify({ todos }) },
+    })
+
+    // 1) First TODO list appears — pushes with progress and checklist.
+    ctx5.emit('session/event', fakeSession, todoCall([
+      { content: '设计推送格式', status: 'completed' },
+      { content: '实现 service 推送逻辑', status: 'in_progress' },
+      { content: '更新 README', status: 'pending' },
+    ]))
+    await new Promise((r) => setTimeout(r, 100))
+    if (sent.length !== 1) throw new Error(`expected 1 todo push, got ${sent.length}`)
+    if (sent[0].type !== 'todoProgress') throw new Error(`wrong event type: ${sent[0].type}`)
+    if (!sent[0].title.includes('[notify]')) throw new Error('workspace missing from title')
+    if (!sent[0].message.includes('📊 进度: 1/3 已完成')) throw new Error('progress count missing')
+    if (!sent[0].message.includes('🔄 实现 service 推送逻辑')) throw new Error('in-progress item missing')
+    console.log('  - first push:', JSON.stringify(sent[0].title))
+
+    // 2) Pure in_progress churn (item pickup, no completed/total change) — silent.
+    ctx5.emit('session/event', fakeSession, todoCall([
+      { content: '设计推送格式', status: 'completed' },
+      { content: '实现 service 推送逻辑', status: 'pending' },
+      { content: '更新 README', status: 'in_progress' },
+    ]))
+    await new Promise((r) => setTimeout(r, 100))
+    if (sent.length !== 1) throw new Error(`in_progress churn should not push, got ${sent.length}`)
+    console.log('  - pure in_progress churn skipped ✓')
+
+    // 3) Progress advances — pushes again.
+    ctx5.emit('session/event', fakeSession, todoCall([
+      { content: '设计推送格式', status: 'completed' },
+      { content: '实现 service 推送逻辑', status: 'completed' },
+      { content: '更新 README', status: 'in_progress' },
+    ]))
+    await new Promise((r) => setTimeout(r, 100))
+    if (sent.length !== 2) throw new Error(`expected progress push, got ${sent.length}`)
+    if (!sent[1].message.includes('📊 进度: 2/3 已完成')) throw new Error('updated progress count missing')
+    console.log('  - progress advance push:', JSON.stringify(sent[1].title))
+
+    // 4) Event filter off — no push.
+    service.updateConfig({ events: { todoProgress: false } })
+    ctx5.emit('session/event', fakeSession, todoCall([
+      { content: '设计推送格式', status: 'completed' },
+      { content: '实现 service 推送逻辑', status: 'completed' },
+      { content: '更新 README', status: 'completed' },
+    ]))
+    await new Promise((r) => setTimeout(r, 100))
+    if (sent.length !== 2) throw new Error(`event filter off should not push, got ${sent.length}`)
+    console.log('  - events.todoProgress=false filtered ✓')
+
+    await service.dispose()
+    await ctx5.fiber.dispose()
+  }
+  console.log()
+  
   // Cleanup
   console.log('✓ Cleanup')
   await ctx.fiber.dispose()

@@ -182,6 +182,7 @@ events:
   conversationFailed: true         # 对话失败
   authorizationRequired: true      # 需要授权
   confirmationRequired: true       # 需要确认
+  todoProgress: true               # TODO 进度（对话中出现任务列表或进度推进时）
 
 # 通知标题前缀（默认空，不加前缀；可设为如 '[MyApp]' 来统一加上产品标签）
 titlePrefix: ''
@@ -224,6 +225,7 @@ titlePrefix: ''
 | `conversationFailed` | `❌ [工作区] 对话失败` | Agent 遇到错误（`turn/end` reason=error） |
 | `confirmationRequired` | `❓ [工作区] 需要回答` | Agent 通过 `ask_user_question` 向你提问 |
 | `authorizationRequired` | `🔐 [工作区] 需要授权` | Agent 请求沙箱权限提升（`approval/asked`） |
+| `todoProgress` | `📋 [工作区] TODO 进度 2/5` | Agent 调用 `todo_write` 发布/更新任务列表；仅进度变化时推送（纯进行中状态切换不打扰） |
 
 ### 通知内容示例
 

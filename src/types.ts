@@ -9,6 +9,7 @@ export type NotifyEventType =
   | 'conversationFailed'
   | 'authorizationRequired'
   | 'confirmationRequired'
+  | 'todoProgress'
 
 /**
  * Metadata attached to a notification
@@ -158,6 +159,7 @@ export interface NotifyEventFilter {
   conversationFailed: boolean
   authorizationRequired: boolean
   confirmationRequired: boolean
+  todoProgress: boolean
 }
 
 /**
@@ -195,5 +197,6 @@ declare module '@deepseek-ai/cordis' {
     'notify/conversationFailed'(event: NotifyEvent): void
     'notify/authorizationRequired'(event: NotifyEvent): void
     'notify/confirmationRequired'(event: NotifyEvent): void
+    'notify/todoProgress'(event: NotifyEvent): void
   }
 }

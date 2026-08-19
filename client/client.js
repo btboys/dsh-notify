@@ -2461,28 +2461,28 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			document.head.appendChild(tag);
 		}
 		var NotifySettings_module_css_default = {
-			"section": "fetK9G_section",
-			"select": "fetK9G_select",
-			"qrBox": "fetK9G_qrBox",
-			"fieldHead": "fetK9G_fieldHead",
-			"status": "fetK9G_status",
-			"pageHint": "fetK9G_pageHint",
-			"label": "fetK9G_label",
-			"discard": "fetK9G_discard",
-			"field": "fetK9G_field",
-			"footer": "fetK9G_footer",
-			"toggle": "fetK9G_toggle",
 			"selectOption": "fetK9G_selectOption",
-			"page": "fetK9G_page",
-			"save": "fetK9G_save",
-			"toggleTrack": "fetK9G_toggleTrack",
-			"input": "fetK9G_input",
-			"sectionTitle": "fetK9G_sectionTitle",
-			"hint": "fetK9G_hint",
+			"failed": "fetK9G_failed",
+			"label": "fetK9G_label",
+			"toggleInput": "fetK9G_toggleInput",
 			"qrImg": "fetK9G_qrImg",
 			"toggleThumb": "fetK9G_toggleThumb",
-			"failed": "fetK9G_failed",
-			"toggleInput": "fetK9G_toggleInput"
+			"qrBox": "fetK9G_qrBox",
+			"field": "fetK9G_field",
+			"page": "fetK9G_page",
+			"pageHint": "fetK9G_pageHint",
+			"section": "fetK9G_section",
+			"sectionTitle": "fetK9G_sectionTitle",
+			"footer": "fetK9G_footer",
+			"hint": "fetK9G_hint",
+			"select": "fetK9G_select",
+			"fieldHead": "fetK9G_fieldHead",
+			"toggle": "fetK9G_toggle",
+			"save": "fetK9G_save",
+			"toggleTrack": "fetK9G_toggleTrack",
+			"status": "fetK9G_status",
+			"input": "fetK9G_input",
+			"discard": "fetK9G_discard"
 		};
 		//#endregion
 		//#region src/client/NotifySettings.tsx
@@ -2550,7 +2550,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 				conversationPaused: true,
 				conversationFailed: true,
 				authorizationRequired: true,
-				confirmationRequired: true
+				confirmationRequired: true,
+				todoProgress: true
 			},
 			titlePrefix: ""
 		};
@@ -3059,7 +3060,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 							"conversationPaused",
 							"conversationFailed",
 							"authorizationRequired",
-							"confirmationRequired"
+							"confirmationRequired",
+							"todoProgress"
 						].map((key) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ToggleRow, {
 							t,
 							labelKey: key,
@@ -3189,6 +3191,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			authorizationRequiredHint: "请求沙箱权限提升时提醒",
 			confirmationRequired: "需要回答",
 			confirmationRequiredHint: "Agent 向你提问时提醒",
+			todoProgress: "TODO 进度",
+			todoProgressHint: "对话中出现 TODO 列表或任务进度推进时提醒（仅进度变化时推送）",
 			titlePrefix: "标题前缀",
 			titlePrefixHint: "所有通知标题统一加的前缀，留空不加"
 		};
@@ -3258,6 +3262,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			authorizationRequiredHint: "Notify when sandbox permission escalation is requested",
 			confirmationRequired: "Question to answer",
 			confirmationRequiredHint: "Notify when the agent asks you something",
+			todoProgress: "TODO progress",
+			todoProgressHint: "Notify when a TODO list appears in the conversation or its progress advances (only on progress changes)",
 			titlePrefix: "Title prefix",
 			titlePrefixHint: "Prefix added to every notification title; empty for none"
 		};

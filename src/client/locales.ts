@@ -77,6 +77,8 @@ export const zh: Record<string, string> = {
   authorizationRequiredHint: '请求沙箱权限提升时提醒',
   confirmationRequired: '需要回答',
   confirmationRequiredHint: 'Agent 向你提问时提醒',
+  todoProgress: 'TODO 进度',
+  todoProgressHint: '对话中出现 TODO 列表或任务进度推进时提醒（仅进度变化时推送）',
 
   titlePrefix: '标题前缀',
   titlePrefixHint: '所有通知标题统一加的前缀，留空不加',
@@ -155,6 +157,8 @@ export const en: Record<string, string> = {
   authorizationRequiredHint: 'Notify when sandbox permission escalation is requested',
   confirmationRequired: 'Question to answer',
   confirmationRequiredHint: 'Notify when the agent asks you something',
+  todoProgress: 'TODO progress',
+  todoProgressHint: 'Notify when a TODO list appears in the conversation or its progress advances (only on progress changes)',
 
   titlePrefix: 'Title prefix',
   titlePrefixHint: 'Prefix added to every notification title; empty for none',
