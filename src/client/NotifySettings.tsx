@@ -62,6 +62,7 @@ const DEFAULTS: NotifyRpcConfig = {
     todoProgress: true,
   },
   titlePrefix: '',
+  mainAgentOnly: true,
 }
 
 /** One labelled toggle row. */
@@ -397,6 +398,8 @@ export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
           <ToggleRow key={key} t={t} labelKey={key} hintKey={`${key}Hint`} checked={cd(`events.${key}`, true)}
             disabled={!enabled()} onChange={(v) => setField(`events.${key}`, v)} />
         ))}
+        <ToggleRow t={t} labelKey="mainAgentOnly" hintKey="mainAgentOnlyHint" checked={cd('mainAgentOnly', true)}
+          disabled={!enabled()} onChange={(v) => setField('mainAgentOnly', v)} />
       </section>
 
       <section className={css.section} aria-label={t('titlePrefix')}>

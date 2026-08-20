@@ -37,6 +37,8 @@ export interface NotifyRpcConfig {
     todoProgress?: boolean
   }
   titlePrefix?: string
+  /** Suppress subagent completion/TODO notifications (see src/types.ts). */
+  mainAgentOnly?: boolean
 }
 
 /** WeChat ClawBot adapter status (see src/adapters/wechat.ts). */

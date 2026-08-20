@@ -79,6 +79,8 @@ export const zh: Record<string, string> = {
   confirmationRequiredHint: 'Agent 向你提问时提醒',
   todoProgress: 'TODO 进度',
   todoProgressHint: '对话中出现 TODO 列表或任务进度推进时提醒（仅进度变化时推送）',
+  mainAgentOnly: '仅主 Agent 通知',
+  mainAgentOnlyHint: '开启后，子 Agent（subagent）的完成/暂停/失败和 TODO 进度不再推送，只有主 Agent 完成时才通知；授权和提问提醒不受此开关影响',
 
   titlePrefix: '标题前缀',
   titlePrefixHint: '所有通知标题统一加的前缀，留空不加',
@@ -159,6 +161,8 @@ export const en: Record<string, string> = {
   confirmationRequiredHint: 'Notify when the agent asks you something',
   todoProgress: 'TODO progress',
   todoProgressHint: 'Notify when a TODO list appears in the conversation or its progress advances (only on progress changes)',
+  mainAgentOnly: 'Main agent only',
+  mainAgentOnlyHint: "When on, subagent completion/pause/failure and TODO progress stay silent — only the main agent's events notify; authorization and question prompts are unaffected",
 
   titlePrefix: 'Title prefix',
   titlePrefixHint: 'Prefix added to every notification title; empty for none',

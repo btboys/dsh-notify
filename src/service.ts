@@ -41,6 +41,10 @@ const DEFAULT_CONFIG: Required<NotifyPluginConfig> = {
   // Empty by default: no title prefix is added. Set e.g. "[DSH]" in config
   // to prepend a product label to every notification title.
   titlePrefix: '',
+  // Subagent completion noise is opt-out: by default only the MAIN agent's
+  // turn endings and TODO progress notify. Flip to false to also hear every
+  // delegated child agent finishing.
+  mainAgentOnly: true,
 }
 
 /**
@@ -523,6 +527,7 @@ export class NotifyService extends Service {
         ...(userConfig.events || {}),
       },
       titlePrefix: userConfig.titlePrefix ?? DEFAULT_CONFIG.titlePrefix,
+      mainAgentOnly: userConfig.mainAgentOnly ?? DEFAULT_CONFIG.mainAgentOnly,
     }
   }
   
@@ -621,7 +626,14 @@ export class NotifyService extends Service {
     this.ctx.on('session/event' as any, async (session: any, event: any) => {
       debug('session/event received, type=', event?.type)
       this.ctx.logger.debug('[notify] Session event received:', event?.type)
-      
+
+      // Subagent noise gate: with mainAgentOnly on, a delegated child agent's
+      // turn endings and TODO progress stay silent — only the MAIN agent's
+      // completion/failure/pause and task progress notify. Prompts that need a
+      // human answer (approval/asked, ask_user_question) are NOT gated: a
+      // subagent waiting on authorization must still reach the user.
+      const suppressSubagent = this.config.mainAgentOnly && this.isSubagentSession(session)
+
       // Handle tool/call events — the model pausing to ask the user, request
       // confirmation, or request authorization surfaces as a tool call.
       if (event?.type === 'tool/call') {
@@ -631,9 +643,30 @@ export class NotifyService extends Service {
           await this.handleUserQuestion(session, event)
         }
         // "todo_write" publishes the agent's task list — push TODO progress.
+        // (Legacy path: older hosts surface todo_write as a plain tool call;
+        // current hosts ALSO emit a dedicated 'todo/write' snapshot event —
+        // handled below. Keep both so either host generation notifies.)
         if (name === 'todo_write') {
+          if (suppressSubagent) {
+            debug('subagent todo_write suppressed (mainAgentOnly)')
+            return
+          }
           await this.handleTodoUpdate(session, event)
         }
+        return
+      }
+
+      // Handle todo/write snapshot events — dsh-tool-todo appends a
+      // { todos } snapshot to the session log on every list replacement.
+      // This is the ONLY todo signal on current hosts (the tool call itself
+      // rides run_code dispatch and never surfaces as a tool/call with
+      // name === 'todo_write'), so without this branch TODO pushes never fire.
+      if (event?.type === 'todo/write') {
+        if (suppressSubagent) {
+          debug('subagent todo/write suppressed (mainAgentOnly)')
+          return
+        }
+        await this.handleTodoWrite(session, event)
         return
       }
       
@@ -646,6 +679,11 @@ export class NotifyService extends Service {
       
       // Handle turn/end events
       if (event?.type === 'turn/end') {
+        if (suppressSubagent) {
+          debug('subagent turn/end suppressed (mainAgentOnly)')
+          this.ctx.logger.debug('[notify] Subagent turn/end suppressed (mainAgentOnly)')
+          return
+        }
         const reason = event.data?.reason?.kind || 'unknown'
         const turn = event.data?.turn || 0
         
@@ -773,6 +811,31 @@ export class NotifyService extends Service {
     const args = this.parseToolArguments(event.data?.arguments)
     const todos: Array<{ content?: string; status?: string }> =
       Array.isArray(args?.todos) ? args.todos : []
+    await this.pushTodoProgress(session, todos)
+  }
+
+  /**
+   * Handle a `todo/write` session event: dsh-tool-todo appended a whole-list
+   * snapshot (`event.data.todos`, already validated by the tool's invariant).
+   * Shares the dedupe + push logic with the legacy tool/call path.
+   * @param session - the Session instance.
+   * @param event - the todo/write event.
+   */
+  private async handleTodoWrite(session: any, event: any): Promise<void> {
+    this.ctx.logger.debug('[notify] todo/write event received')
+
+    const todos: Array<{ content?: string; status?: string }> =
+      Array.isArray(event?.data?.todos) ? event.data.todos : []
+    await this.pushTodoProgress(session, todos)
+  }
+
+  /**
+   * Push a TODO progress notification for a task-list snapshot, with
+   * per-session signature dedupe (see handleTodoUpdate's noise-control note).
+   * @param session - the Session instance.
+   * @param todos - the task list snapshot.
+   */
+  private async pushTodoProgress(session: any, todos: Array<{ content?: string; status?: string }>): Promise<void> {
     if (todos.length === 0) return
 
     const total = todos.length
@@ -860,6 +923,19 @@ export class NotifyService extends Service {
   }
   
   /**
+   * Whether a session is a delegated SUBAGENT child. DSH stamps subagent
+   * sessions with `header.origin === 'subagent'` and a `delegationDepth`
+   * greater than zero (top-level sessions have neither); accept either signal
+   * so older hosts without `origin` are still recognized.
+   */
+  private isSubagentSession(session: any): boolean {
+    const header = session?.header
+    if (!header) return false
+    if (header.origin === 'subagent') return true
+    return typeof header.delegationDepth === 'number' && header.delegationDepth > 0
+  }
+
+  /**
    * Check if a given event type should trigger notifications
    */
   private shouldNotify(eventType: NotifyEventType): boolean {
@@ -879,8 +955,21 @@ export class NotifyService extends Service {
     details: { userPrompt?: string; reply?: string; tools?: string[]; steps?: number; durationMs?: number; title?: string; workspace?: string; sessionId?: string }
   } {
     const details: { userPrompt?: string; reply?: string; tools?: string[]; steps?: number; durationMs?: number; title?: string; workspace?: string; sessionId?: string } = {}
-    const log: any[] = Array.isArray(session?.log) ? session.log : []
-    
+    const allEvents: any[] = Array.isArray(session?.log) ? session.log : []
+
+    // A subagent/forked session is SEEDED with its parent's event log: the
+    // inherited events carry the PARENT's user prompts and assistant replies,
+    // and most of them have no `data.turn` — so they pass the turn filter
+    // below and the child's turn summary would repeat the MAIN agent's last
+    // exchange verbatim. `firstLiveSeq` marks where this session's own
+    // appends begin (the constructor-seed boundary); only events at or after
+    // it describe this session's work. Plain top-level sessions have
+    // firstLiveSeq 0 and are unaffected.
+    const firstLive = typeof session?.firstLiveSeq === 'number' ? session.firstLiveSeq : 0
+    const log = firstLive > 0
+      ? allEvents.filter((e) => typeof e?.seq === 'number' && e.seq >= firstLive)
+      : allEvents
+
     // Filter events belonging to this turn (and tolerate turn-less logs)
     const turnEvents = log.filter(e => e?.type === 'turn/start' || e?.data?.turn === turn || e?.data?.turn === undefined)
     
@@ -921,9 +1010,11 @@ export class NotifyService extends Service {
     const tools = [...toolCounts.entries()]
       .map(([name, count]) => count > 1 ? `${name}×${count}` : name)
     
-    // Conversation title: from the latest session/title event
+    // Conversation title: from the latest session/title event. Scans the FULL
+    // log (not the live-only cut above) so a resumed session keeps the title
+    // recorded before the restart.
     let title = ''
-    for (const e of log) {
+    for (const e of allEvents) {
       if (e?.type === 'session/title' && e.data?.title) title = e.data.title
     }
     

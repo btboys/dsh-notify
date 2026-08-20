@@ -60,6 +60,8 @@ export interface NotifySettings {
   notifyOnTodo: boolean
   /** Title prefix. */
   titlePrefix: string
+  /** Suppress subagent completion/TODO notifications; only the main agent notifies. */
+  mainAgentOnly: boolean
 }
 
 /**
@@ -91,6 +93,7 @@ export const NOTIFY_SETTINGS_SCHEMA: z<NotifySettings> = z.object({
   notifyOnConfirmation: z.boolean().default(true),
   notifyOnTodo: z.boolean().default(true),
   titlePrefix: z.string().default(''),
+  mainAgentOnly: z.boolean().default(true),
 })
 
 /**
@@ -141,6 +144,7 @@ export function settingsToConfig(settings: NotifySettings): NotifyPluginConfig {
       todoProgress: settings.notifyOnTodo,
     },
     titlePrefix: settings.titlePrefix,
+    mainAgentOnly: settings.mainAgentOnly,
   }
 }
 
@@ -175,6 +179,7 @@ export function configToSettings(config: NotifyPluginConfig): NotifySettings {
     notifyOnConfirmation: config.events?.confirmationRequired ?? true,
     notifyOnTodo: config.events?.todoProgress ?? true,
     titlePrefix: config.titlePrefix ?? '',
+    mainAgentOnly: config.mainAgentOnly ?? true,
   }
 }
 

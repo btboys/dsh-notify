@@ -276,15 +276,28 @@ async function runTests() {
     if (!sent[1].message.includes('📊 进度: 2/3 已完成')) throw new Error('updated progress count missing')
     console.log('  - progress advance push:', JSON.stringify(sent[1].title))
 
-    // 4) Event filter off — no push.
-    service.updateConfig({ events: { todoProgress: false } })
-    ctx5.emit('session/event', fakeSession, todoCall([
-      { content: '设计推送格式', status: 'completed' },
-      { content: '实现 service 推送逻辑', status: 'completed' },
-      { content: '更新 README', status: 'completed' },
-    ]))
+    // 4) Dedicated todo/write snapshot event (current dsh-tool-todo path) — pushes too.
+    ctx5.emit('session/event', fakeSession, {
+      type: 'todo/write',
+      data: { todos: [
+        { content: '设计推送格式', status: 'completed' },
+        { content: '实现 service 推送逻辑', status: 'completed' },
+        { content: '更新 README', status: 'completed' },
+      ] },
+    })
     await new Promise((r) => setTimeout(r, 100))
-    if (sent.length !== 2) throw new Error(`event filter off should not push, got ${sent.length}`)
+    if (sent.length !== 3) throw new Error(`todo/write event should push, got ${sent.length}`)
+    if (!sent[2].message.includes('📊 进度: 3/3 已完成')) throw new Error('todo/write progress count missing')
+    console.log('  - todo/write snapshot push:', JSON.stringify(sent[2].title))
+
+    // 5) Event filter off — no push.
+    service.updateConfig({ events: { todoProgress: false } })
+    ctx5.emit('session/event', fakeSession, {
+      type: 'todo/write',
+      data: { todos: [{ content: '新任务', status: 'pending' }] },
+    })
+    await new Promise((r) => setTimeout(r, 100))
+    if (sent.length !== 3) throw new Error(`event filter off should not push, got ${sent.length}`)
     console.log('  - events.todoProgress=false filtered ✓')
 
     await service.dispose()

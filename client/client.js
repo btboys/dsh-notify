@@ -2461,28 +2461,28 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			document.head.appendChild(tag);
 		}
 		var NotifySettings_module_css_default = {
-			"pageHint": "fetK9G_pageHint",
-			"toggleTrack": "fetK9G_toggleTrack",
-			"status": "fetK9G_status",
-			"section": "fetK9G_section",
-			"qrImg": "fetK9G_qrImg",
 			"select": "fetK9G_select",
 			"discard": "fetK9G_discard",
-			"field": "fetK9G_field",
-			"toggle": "fetK9G_toggle",
-			"toggleThumb": "fetK9G_toggleThumb",
-			"input": "fetK9G_input",
-			"hint": "fetK9G_hint",
-			"toggleInput": "fetK9G_toggleInput",
-			"sectionTitle": "fetK9G_sectionTitle",
-			"footer": "fetK9G_footer",
-			"failed": "fetK9G_failed",
-			"save": "fetK9G_save",
-			"qrBox": "fetK9G_qrBox",
 			"fieldHead": "fetK9G_fieldHead",
-			"page": "fetK9G_page",
+			"toggleInput": "fetK9G_toggleInput",
+			"toggleTrack": "fetK9G_toggleTrack",
+			"selectOption": "fetK9G_selectOption",
+			"failed": "fetK9G_failed",
+			"section": "fetK9G_section",
 			"label": "fetK9G_label",
-			"selectOption": "fetK9G_selectOption"
+			"pageHint": "fetK9G_pageHint",
+			"input": "fetK9G_input",
+			"qrBox": "fetK9G_qrBox",
+			"page": "fetK9G_page",
+			"qrImg": "fetK9G_qrImg",
+			"footer": "fetK9G_footer",
+			"hint": "fetK9G_hint",
+			"save": "fetK9G_save",
+			"toggleThumb": "fetK9G_toggleThumb",
+			"sectionTitle": "fetK9G_sectionTitle",
+			"status": "fetK9G_status",
+			"field": "fetK9G_field",
+			"toggle": "fetK9G_toggle"
 		};
 		//#endregion
 		//#region src/client/NotifySettings.tsx
@@ -2553,7 +2553,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 				confirmationRequired: true,
 				todoProgress: true
 			},
-			titlePrefix: ""
+			titlePrefix: "",
+			mainAgentOnly: true
 		};
 		/** One labelled toggle row. */
 		function ToggleRow(props) {
@@ -3052,24 +3053,35 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
 						className: NotifySettings_module_css_default.section,
 						"aria-label": t("eventsTitle"),
-						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("h3", {
-							className: NotifySettings_module_css_default.sectionTitle,
-							children: t("eventsTitle")
-						}), [
-							"conversationCompleted",
-							"conversationPaused",
-							"conversationFailed",
-							"authorizationRequired",
-							"confirmationRequired",
-							"todoProgress"
-						].map((key) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ToggleRow, {
-							t,
-							labelKey: key,
-							hintKey: `${key}Hint`,
-							checked: cd(`events.${key}`, true),
-							disabled: !enabled(),
-							onChange: (v) => setField(`events.${key}`, v)
-						}, key))]
+						children: [
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("h3", {
+								className: NotifySettings_module_css_default.sectionTitle,
+								children: t("eventsTitle")
+							}),
+							[
+								"conversationCompleted",
+								"conversationPaused",
+								"conversationFailed",
+								"authorizationRequired",
+								"confirmationRequired",
+								"todoProgress"
+							].map((key) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ToggleRow, {
+								t,
+								labelKey: key,
+								hintKey: `${key}Hint`,
+								checked: cd(`events.${key}`, true),
+								disabled: !enabled(),
+								onChange: (v) => setField(`events.${key}`, v)
+							}, key)),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ToggleRow, {
+								t,
+								labelKey: "mainAgentOnly",
+								hintKey: "mainAgentOnlyHint",
+								checked: cd("mainAgentOnly", true),
+								disabled: !enabled(),
+								onChange: (v) => setField("mainAgentOnly", v)
+							})
+						]
 					}),
 					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
 						className: NotifySettings_module_css_default.section,
@@ -3193,6 +3205,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			confirmationRequiredHint: "Agent 向你提问时提醒",
 			todoProgress: "TODO 进度",
 			todoProgressHint: "对话中出现 TODO 列表或任务进度推进时提醒（仅进度变化时推送）",
+			mainAgentOnly: "仅主 Agent 通知",
+			mainAgentOnlyHint: "开启后，子 Agent（subagent）的完成/暂停/失败和 TODO 进度不再推送，只有主 Agent 完成时才通知；授权和提问提醒不受此开关影响",
 			titlePrefix: "标题前缀",
 			titlePrefixHint: "所有通知标题统一加的前缀，留空不加"
 		};
@@ -3264,6 +3278,8 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			confirmationRequiredHint: "Notify when the agent asks you something",
 			todoProgress: "TODO progress",
 			todoProgressHint: "Notify when a TODO list appears in the conversation or its progress advances (only on progress changes)",
+			mainAgentOnly: "Main agent only",
+			mainAgentOnlyHint: "When on, subagent completion/pause/failure and TODO progress stay silent — only the main agent's events notify; authorization and question prompts are unaffected",
 			titlePrefix: "Title prefix",
 			titlePrefixHint: "Prefix added to every notification title; empty for none"
 		};

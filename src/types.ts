@@ -180,6 +180,15 @@ export interface NotifyPluginConfig {
   events?: NotifyEventFilter
   /** Default title prefix for all notifications */
   titlePrefix?: string
+  /**
+   * When true (default), completion-type events from SUBAGENT sessions are
+   * suppressed: a delegated child agent finishing its turn (completed / paused
+   * / failed) or pushing TODO progress stays silent, and only the MAIN
+   * agent's events notify. Events that require a human answer
+   * (authorizationRequired / confirmationRequired) are NOT affected, so a
+   * subagent waiting on approval still reaches you.
+   */
+  mainAgentOnly?: boolean
 }
 
 /**

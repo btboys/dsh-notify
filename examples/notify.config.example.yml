@@ -74,3 +74,8 @@ events:
 
 # Optional prefix for all notification titles
 titlePrefix: '[DSH]'
+
+# When true (default), subagent completion/pause/failure and TODO progress
+# stay silent — only the MAIN agent's events notify. Authorization and
+# question prompts from subagents are never gated.
+mainAgentOnly: true

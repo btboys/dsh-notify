@@ -142,6 +142,24 @@ async function main() {
   if (!withCustom.includes('customKey: custom-value')) throw new Error('custom metadata dropped: ' + JSON.stringify(withCustom))
   if (withCustom.includes('turn:') || withCustom.includes('workspace:')) throw new Error('standard metadata leaked')
 
+  // Test 2b3: markdown tables stay tightly packed — hardBreaks must NOT
+  // insert blank lines between table rows (that dissolves the table back
+  // into plain text), while paragraph lines around it are still promoted.
+  console.log('✓ Test 2b3: markdown table rows keep single newlines')
+  sent.length = 0
+  await adapter.send({
+    type: 'conversationCompleted',
+    title: 't',
+    message: '🤖 结果如下\n| 名称 | 状态 |\n|---|---|\n| 构建 | ✅ |\n| 测试 | ❌ |\n以上是本次结果。',
+  })
+  const table = sent[0].payload.msg.item_list[0].text_item.text
+  console.log('  - text:', JSON.stringify(table))
+  if (!table.includes('| 名称 | 状态 |\n|---|---|\n| 构建 | ✅ |\n| 测试 | ❌ |')) {
+    throw new Error('table rows split by blank lines: ' + JSON.stringify(table))
+  }
+  if (!table.includes('🤖 结果如下\n\n| 名称 |')) throw new Error('paragraph before table not promoted')
+  if (!table.includes('| 测试 | ❌ |\n\n以上是本次结果。')) throw new Error('paragraph after table not promoted')
+
   // Test 2c: ret=-2 "prepare failed" evicts the dead context token and send throws.
   // Uses an isolated session file + adapter so later tests keep their users.
   console.log('✓ Test 2c: dead context token (ret=-2) is evicted and surfaces as failure')

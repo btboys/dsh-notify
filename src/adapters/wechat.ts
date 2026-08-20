@@ -51,9 +51,35 @@ const MAX_TEXT_LENGTH = 2000
  * multi-line pushes (💬 user / 🤖 reply, approval cards, menus) arrive glued
  * onto one line. The only break that survives is a blank line: promote every
  * single newline to a paragraph break.
+ *
+ * EXCEPT inside markdown tables: a table is a run of tightly packed rows —
+ * inserting a blank line between rows dissolves the table back into plain
+ * text (the regression this guard fixes). Table rows keep single newlines.
  */
 function hardBreaks(text: string): string {
-  return text.replace(/([^\n])\n(?!\n)/g, '$1\n\n')
+  const lines = text.split('\n')
+  let out = ''
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    out += lines[i]
+    // Promote a soft break to a paragraph break only between two CONTENT
+    // lines (existing blank lines pass through untouched), and never inside
+    // a table — only a table-row → table-row break stays a single newline.
+    const promote = lines[i] !== '' && lines[i + 1] !== ''
+      && !(isTableRow(lines[i]) && isTableRow(lines[i + 1]))
+    out += promote ? '\n\n' : '\n'
+  }
+  return out + lines[lines.length - 1]
+}
+
+/**
+ * Whether a line belongs to a markdown table: a row with pipe delimiters
+ * (`| a | b |`) or the header separator (`|---|---|`, with or without
+ * edge pipes / alignment colons).
+ */
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim()
+  if (trimmed.startsWith('|')) return true
+  return /^\|?[\s:|-]*-+[\s:|-]*\|?$/.test(trimmed) && trimmed.includes('-')
 }
 
 /** Persisted ClawBot session: credentials plus captured context tokens. */

@@ -45,5 +45,6 @@
     "authorizationRequired": true,
     "confirmationRequired": true
   },
-  "titlePrefix": "[DSH]"
+  "titlePrefix": "[DSH]",
+  "mainAgentOnly": true
 }
