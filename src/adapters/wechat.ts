@@ -46,6 +46,20 @@ const POLL_RETRY_BACKOFF_MS = 5_000
 const MAX_TEXT_LENGTH = 2000
 
 /**
+ * Truncate at a line boundary near the limit so a push never ends mid-row:
+ * a hard slice through a markdown table row leaves a dangling partial row,
+ * and a partial row at the tail dissolves the WHOLE table back into literal
+ * pipe text on ClawBot. Falls back to a hard slice when no line break sits
+ * reasonably close to the limit (a single giant line).
+ */
+function truncateAtLine(text: string, max: number): string {
+  if (text.length <= max) return text
+  const newline = text.lastIndexOf('\n', max - 1)
+  const at = newline >= Math.floor(max * 0.6) ? newline : max - 1
+  return `${text.slice(0, at).trimEnd()}…`
+}
+
+/**
  * The ClawBot UI renders text items as markdown AND strips trailing spaces,
  * so both single newlines (soft breaks) and two-space hard breaks collapse —
  * multi-line pushes (💬 user / 🤖 reply, approval cards, menus) arrive glued
@@ -80,6 +94,35 @@ function isTableRow(line: string): boolean {
   const trimmed = line.trim()
   if (trimmed.startsWith('|')) return true
   return /^\|?[\s:|-]*-+[\s:|-]*\|?$/.test(trimmed) && trimmed.includes('-')
+}
+
+/**
+ * Re-pack "loose" markdown tables. Agents often emit blank lines between
+ * table rows for readability, but ClawBot renders a table only when its rows
+ * are tightly packed — a blank line between rows dissolves it back into
+ * literal pipe text (the regression seen in the wild). Drop any blank line
+ * whose nearest non-blank neighbors above AND below are both table rows;
+ * blank lines at the table's edges (paragraph → table, table → paragraph)
+ * pass through untouched.
+ */
+function tightenTables(text: string): string {
+  const lines = text.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]
+    if (line.trim() !== '') {
+      out.push(line)
+      continue
+    }
+    // Blank line: peek at the nearest non-blank line below (skipping any
+    // further blank lines — a run of them inside a table collapses fully).
+    let j = i + 1
+    while (j < lines.length && lines[j].trim() === '') j += 1
+    const above = out.length > 0 ? out[out.length - 1] : ''
+    const below = j < lines.length ? lines[j] : ''
+    if (!(isTableRow(above) && isTableRow(below))) out.push(line)
+  }
+  return out.join('\n')
 }
 
 /** Persisted ClawBot session: credentials plus captured context tokens. */
@@ -480,7 +523,7 @@ export class WeChatClawBotAdapter implements NotificationAdapter {
           message_type: 2, // BOT
           message_state: 2, // FINISH
           context_token: contextToken,
-          item_list: [{ type: 1, text_item: { text: hardBreaks(text) } }],
+          item_list: [{ type: 1, text_item: { text: hardBreaks(tightenTables(text)) } }],
         },
       },
       15_000,
@@ -535,7 +578,7 @@ export class WeChatClawBotAdapter implements NotificationAdapter {
     }
 
     const text = lines.join('\n')
-    return text.length > MAX_TEXT_LENGTH ? `${text.slice(0, MAX_TEXT_LENGTH - 1)}…` : text
+    return truncateAtLine(text, MAX_TEXT_LENGTH)
   }
 
   // ── HTTP helpers ───────────────────────────────────────────────────────────

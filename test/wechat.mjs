@@ -160,6 +160,43 @@ async function main() {
   if (!table.includes('🤖 结果如下\n\n| 名称 |')) throw new Error('paragraph before table not promoted')
   if (!table.includes('| 测试 | ❌ |\n\n以上是本次结果。')) throw new Error('paragraph after table not promoted')
 
+  // Test 2b4: a "loose" table (blank lines between rows, as agents like to
+  // emit) is re-packed into a tight table so ClawBot still renders it,
+  // while blank lines at the table's edges survive.
+  console.log('✓ Test 2b4: loose table rows are tightened')
+  sent.length = 0
+  await adapter.send({
+    type: 'conversationCompleted',
+    title: 't',
+    message: '🤖 文件清单\n\n| 文件 | 改动 |\n\n|---|---|\n\n| a.js | 新增 |\n\n| b.js | 修改 |\n\n以上。',
+  })
+  const loose = sent[0].payload.msg.item_list[0].text_item.text
+  console.log('  - text:', JSON.stringify(loose))
+  if (!loose.includes('| 文件 | 改动 |\n|---|---|\n| a.js | 新增 |\n| b.js | 修改 |')) {
+    throw new Error('loose table not tightened: ' + JSON.stringify(loose))
+  }
+  if (!loose.includes('🤖 文件清单\n\n| 文件 |')) throw new Error('blank line before table lost')
+  if (!loose.includes('| b.js | 修改 |\n\n以上。')) throw new Error('blank line after table lost')
+
+  // Test 2b5: oversized pushes truncate at a line boundary — never mid-row,
+  // which would leave a dangling partial table row and dissolve the table.
+  console.log('✓ Test 2b5: truncation cuts at a line boundary')
+  sent.length = 0
+  const longRows = Array.from({ length: 40 }, (_, i) =>
+    `| src/agent/components/VeryLongFileName${String(i).padStart(2, '0')}.vue | 这是一个足够长的改动说明，用来把消息撑过两千字符的限制 ${i} |`)
+  await adapter.send({
+    type: 'conversationCompleted',
+    title: 't',
+    message: ['🤖 文件清单', '', '| 文件 | 改动 |', '|---|---|', ...longRows].join('\n'),
+  })
+  const cut = sent[0].payload.msg.item_list[0].text_item.text
+  console.log('  - length:', cut.length, '| tail:', JSON.stringify(cut.slice(-60)))
+  if (!cut.endsWith('…')) throw new Error('truncation marker missing')
+  if (cut.length > 2100) throw new Error('push exceeded the size cap: ' + cut.length)
+  const lastLine = cut.slice(0, -1).split('\n').pop()
+  const sourceLines = ['【t】', '', '🤖 文件清单', '| 文件 | 改动 |', '|---|---|', ...longRows]
+  if (!sourceLines.includes(lastLine)) throw new Error('cut landed mid-line: ' + JSON.stringify(lastLine))
+
   // Test 2c: ret=-2 "prepare failed" evicts the dead context token and send throws.
   // Uses an isolated session file + adapter so later tests keep their users.
   console.log('✓ Test 2c: dead context token (ret=-2) is evicted and surfaces as failure')

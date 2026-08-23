@@ -1028,7 +1028,16 @@ export class NotifyService extends Service {
     // within a line but keep single newlines (3+ newlines fold into a blank
     // line). Chat pushes read far better with the reply's structure intact.
     const tidy = (s: string) => s.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
-    const truncate = (s: string, n: number) => s.length > n ? `${s.slice(0, n)}…` : s
+    // Truncate at a line boundary near the limit: a hard slice can cut a
+    // markdown table row in half, and the dangling partial row dissolves the
+    // whole table into literal pipe text on renderers like WeChat ClawBot.
+    // Falls back to a hard slice for a single giant line with no break nearby.
+    const truncate = (s: string, n: number) => {
+      if (s.length <= n) return s
+      const newline = s.lastIndexOf('\n', n)
+      const at = newline >= Math.floor(n * 0.6) ? newline : n
+      return `${s.slice(0, at).trimEnd()}…`
+    }
     
     // Build the message
     const lines: string[] = []
