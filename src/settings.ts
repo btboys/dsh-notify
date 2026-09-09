@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { NotifyPluginConfig } from './types.js'
 
@@ -7,8 +7,12 @@ import { NotifyPluginConfig } from './types.js'
  * Settings namespace for the notify plugin.
  * This must be added to the apiproxy `WEB_SETTINGS_NAMESPACES` allowlist
  * to appear in the Web "插件配置" (Plugin Configuration) page.
+ *
+ * dsh-settings >= 0.1.2-rc.1 removed the `settingsNamespace()` runtime
+ * helper; a namespace is now a plain branded string validated by
+ * `settings.register()`.
  */
-export const NOTIFY_SETTINGS_NAMESPACE = settingsNamespace('notify')
+export const NOTIFY_SETTINGS_NAMESPACE = 'notify' as SettingsNamespace
 
 /**
  * The notify fields a user owns through the Web settings page.
