@@ -65,11 +65,10 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
   })
 
   // Expose the settings (read/write) channel to the browser so the "通知"
-  // settings page can view and edit the configuration. `connection` is declared
-  // via `inject`, so `ctx.get('connection').rpc` resolves here.
-  const connection = serviceOf(ctx, 'connection') as { rpc?: { handle(...args: unknown[]): unknown } } | null
-  const rpc = connection?.rpc
-  const disposeRpc = installNotifyRpc(rpc, {
+  // settings page can view and edit the configuration. The channel is mounted
+  // directly on `webServer` from a soft-injected child fiber — see
+  // notify-rpc.ts for why `connection.rpc.handle` is no longer used.
+  installNotifyRpc(ctx, {
     read: () => service.getConfig(),
     write: (partial) => {
       service.updateConfig(partial as Partial<NotifyPluginConfig>)
@@ -92,10 +91,10 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
     }
   }
 
-  // Register cleanup using effect
+  // Register cleanup using effect. The RPC route disposes itself with the
+  // soft-injected child fiber; only the service needs explicit teardown.
   ctx.effect(() => {
     return async () => {
-      disposeRpc()
       await service.dispose()
     }
   }, 'notify plugin cleanup')
