@@ -194,6 +194,55 @@ async function run() {
     return
   }
   console.log('✓ route removed with the plugin fiber')
+
+  // Regression: the pre-1.4.5 channel called `connection.rpc.handle(...)`, whose
+  // registry makes the Connection service's own context the route owner and then
+  // reads `owner.webServer` — a throw that aborted the WHOLE plugin activation
+  // (`1 entry did not activate notify: cannot get property "webServer" without
+  // inject`). A host that still exposes that face must not break activation.
+  const legacyCtx = new Context()
+  let legacyRoute = null
+  let legacyCalls = 0
+  legacyCtx.provide('connection', {
+    requestRejection: () => undefined,
+    rpc: {
+      handle: () => {
+        legacyCalls += 1
+        throw new Error('cannot get property "webServer" without inject')
+      },
+    },
+  })
+  legacyCtx.provide('webServer', { register: (registered) => { legacyRoute = registered; return () => {} } })
+  let activationError = null
+  try {
+    await legacyCtx.plugin(notifyPlugin, { enabled: true })
+  } catch (error) {
+    activationError = error
+  }
+  if (activationError !== null) {
+    console.error(`✗ activation must not fail on a legacy connection.rpc face: ${activationError.message}`)
+    process.exitCode = 1
+    return
+  }
+  if (legacyCalls !== 0) {
+    console.error('✗ the plugin must not call connection.rpc.handle')
+    process.exitCode = 1
+    return
+  }
+  if (legacyRoute === null) {
+    console.error('✗ the plugin must still register its own route')
+    process.exitCode = 1
+    return
+  }
+  const legacyService = legacyCtx.notify
+  if (legacyService === undefined) {
+    console.error('✗ the notify service must be published after activation')
+    process.exitCode = 1
+    return
+  }
+  console.log('✓ legacy connection.rpc.handle is neither called nor fatal')
+  await legacyCtx.fiber.dispose()
+
   rmSync(home, { recursive: true, force: true })
   console.log('\n✅ Integration test passed')
 }
