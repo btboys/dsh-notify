@@ -5,7 +5,8 @@ import { SystemNotificationAdapter } from './adapters/system.js'
 import { WebhookNotificationAdapter } from './adapters/webhook.js'
 import { WeComNotificationAdapter } from './adapters/wecom.js'
 import { WeChatClawBotAdapter, WeChatAdapterStatus } from './adapters/wechat.js'
-import { ApiProxyLike, InteractionBridge } from './interaction.js'
+import { InteractionBridge } from './interaction.js'
+import { DshInteractionHost } from './host-interaction.js'
 import { TelegramNotificationAdapter } from './adapters/telegram.js'
 import {
   NotifyEvent,
@@ -57,7 +58,7 @@ export class NotifyService extends Service {
   private adapters: NotificationAdapter[] = []
   /** Whether session event listeners have been registered (at most once). */
   private listenersRegistered = false
-  /** WeChat two-way interaction bridge; null when apiProxy is unavailable. */
+  /** Chat two-way interaction bridge; null until attachHost() runs. */
   private bridge: InteractionBridge | null = null
   /**
    * Last pushed TODO-list signature per session, for dedupe. todo_write fires
@@ -84,14 +85,19 @@ export class NotifyService extends Service {
   }
   
   /**
-   * Attach the host API gateway and start the WeChat interaction bridge.
-   * Called by the plugin entry through `ctx.inject(['apiProxy'], …)` once the
-   * gateway service is available; the bridge survives adapter rebuilds because
-   * its hooks resolve the CURRENT wechat adapter on every call.
+   * Wire the host interaction seams and start the chat bridge.
+   *
+   * The bridge composes with the current host APIs directly
+   * (`approval/request` + `user-questions/request` waterfalls, the session
+   * controller, the workspace registry) — there is no longer an API gateway to
+   * wait for, so this runs unconditionally at mount and the bridge simply
+   * stays idle until an interactive channel is configured. It survives
+   * adapter rebuilds because its hooks resolve the CURRENT adapters on every
+   * call.
    */
-  setApiProxy(apiProxy: ApiProxyLike): void {
+  attachHost(): void {
     if (this.bridge) return
-    const bridge = new InteractionBridge(this.ctx, apiProxy, {
+    const bridge = new InteractionBridge(this.ctx, new DshInteractionHost(this.ctx), {
       // Fan receipts out to every interactive channel; each push is
       // best-effort so one channel's failure never blocks the others.
       pushText: async (text) => {
@@ -141,7 +147,7 @@ export class NotifyService extends Service {
     })
     this.bridge = bridge
     this.syncInteraction()
-    this.ctx.logger.info('[notify] Interaction bridge attached (apiProxy available)')
+    this.ctx.logger.info('[notify] Interaction bridge attached')
   }
   
   /** The current WeChat adapter, if the channel is initialized. */

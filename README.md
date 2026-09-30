@@ -338,7 +338,7 @@ export default function myPlugin(ctx: Context) {
 - 💬 **续接对话** — 没有待处理交互时，任意文字回复会作为下一条用户消息注入**最近通知的会话**，排队执行
 - 📱 **切换对话/工作区** — 发送 `/sessions` 列出最近对话、`/workspace` 列出工作区（编号菜单），回复 `/sel s 序号` / `/sel w 序号` 切换续接目标；`/current` 查看当前对话（与 Telegram 命令菜单一致的词汇）
 
-交互基于 DSH Host 的 in-process API 网关（`ctx.apiProxy`）实现，与 Web UI 共享同一 pending 表：微信和浏览器**先到先得**，谁先回答谁生效，另一端的弹窗自动失效。`toUserIds` 白名单同时约束交互权限——不在白名单内的用户回复会被忽略（白名单为空时所有已知用户都可交互）。
+交互直接挂到 DSH Host 的审批/提问决策缝（`approval/request` 与 `user-questions/request` 两条 waterfall）上，与 Web UI **竞争同一个决策位**：插件以 `prepend` 先入队，把卡片推到聊天渠道后立刻放行下游链路并 `Promise.race` 两者——所以微信/Telegram 和浏览器**先到先得**，谁先回答谁生效，另一端随后收到「已在其他端处理」。续接对话走 `ctx.sessionController.prompt`（与 Web 端同一入口，可唤醒冷会话），会话/工作区菜单读 `ctx.sessionController.list` / `ctx.workspaceRegistry`。`toUserIds` 白名单同时约束交互权限——不在白名单内的用户回复会被忽略（白名单为空时所有已知用户都可交互）。
 
 配置示例：
 
@@ -397,7 +397,8 @@ Telegram 是**体验最好的交互渠道**——Bot API 原生支持内联按�
 
 交互机制与安全：
 
-- 基于 DSH Host 的 in-process API 网关（`ctx.apiProxy`）实现，与 Web UI 共享同一 pending 表：Telegram / 微信 / 浏览器**先到先得**，一处作答后其余端自动失效
+- 直接挂到 DSH Host 的 `approval/request` / `user-questions/request` waterfall 上（`prepend` 先入队 + 放行下游 + 竞速）：Telegram / 微信 / 浏览器**先到先得**，一处作答后其余端再作答会收到「已在其他端处理」
+- 续接对话、会话/工作区菜单分别走 `ctx.sessionController` 与 `ctx.workspaceRegistry`；宿主未提供某个服务时，对应命令回复明确提示而不是静默失败
 - **只有配置的 `chatId` 可以驱动交互**，天然白名单；其他账号发消息/点按钮一律忽略
 - 每条回执都有确认消息（「✅ 已批准」「📨 已发送到会话」），操作结果可见
 
@@ -472,8 +473,12 @@ npm run typecheck
 # 开发模式（host 监听变化）
 npm run dev
 
-# 集成测试（验证 settings 注册）
+# 集成测试（挂载插件 + /dsh-notify RPC 通道读写配置）
 node test/integration.mjs
+
+# 交互桥单测（聊天回复路由）与宿主适配器单测（waterfall 竞速/顺序/中止）
+node test/interaction.mjs
+node test/host-interaction.mjs
 
 # 配置持久化 + RPC 通道单元测试
 node --experimental-transform-types test/persist.mjs

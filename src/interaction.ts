@@ -1,39 +1,32 @@
 import { Context } from '@deepseek-ai/cordis'
-import { randomUUID } from 'node:crypto'
 
 /**
- * WeChat two-way interaction bridge.
+ * Chat-channel two-way interaction bridge.
  *
- * Upgrades the WeChat ClawBot channel from one-way pushes to a remote-control
- * surface for DSH. It uses the host's IN-PROCESS API gateway (`ctx.apiProxy`,
- * the same contract the browser client talks to over HTTP):
+ * Upgrades the WeChat/Telegram channels from one-way pushes to a remote-control
+ * surface for DSH. It no longer talks to any API gateway: until 1.4.3 it drove
+ * everything through `ctx.apiProxy` (`@deepseek-ai/dsh-host-apiproxy`), a
+ * package the harness removed. It now composes with the current HOST seams:
  *
- *   - `events.mux()`      — subscribes to the all-session frame stream and
- *                           picks up the two ANSWERABLE frames:
- *                           `approval/requested` and `question/requested`
- *                           (each carries the stable rpcId that answers echo).
- *   - `respond()`         — settles a pending approval/question. The pending
- *                           table is shared with the Web UI and the FIRST
- *                           claimant wins: whichever side (WeChat or browser)
- *                           answers first settles it; the other gets
- *                           `not-pending` and its UI auto-dismisses via the
- *                           "resolved" frames (which we also listen to).
- *   - `sessions.prompt()` — injects a free-text WeChat reply as an ordinary
- *                           follow-up user message into the most recently
- *                           notified session, continuing the conversation.
+ *   - `approval/request`       — the Agent-scoped answerer waterfall. The
+ *                                bridge registers with `prepend: true` (the
+ *                                Remote/browser answerer is terminal once it
+ *                                registers first), pushes the card, starts the
+ *                                downstream chain itself and returns
+ *                                `Promise.race([chatAnswer, downstream])` — so
+ *                                whichever side answers first still wins.
+ *   - `user-questions/request` — the same shape for `ask_user_question`.
+ *   - `ctx.agents` / `agent.followup()`  — free-text continuation.
+ *   - `ctx.sessionQuery` / `ctx.workspaceRegistry` — the /sessions and
+ *                                /workspace menus.
  *
- * The bridge deliberately avoids the cordis-level seams (`approval/request`
- * waterfall listener, `userQuestions.registerProvider`): the Web UI's
- * apiproxy already owns both (the provider is single-registration), and
- * answering through `respond()` composes with it instead of fighting it.
- *
- * All wire shapes below are structural — see
- * `@deepseek-ai/dsh-host-apiproxy` lib/types/api/{events,approvals,questions,rpc,sessions}.d.ts
- * (the runtime deployment always provides the real service; the plugin only
- * soft-resolves it so non-web deployments degrade gracefully).
+ * Every host service is soft-resolved through {@link InteractionHost}; a
+ * deployment without one degrades to a clear chat message instead of failing.
+ * All host shapes below are structural, so this file never imports a harness
+ * package (that coupling is what broke the plugin on dsh-settings 0.1.2+).
  */
 
-// ── Structural wire types (mirrors of dsh-host-apiproxy contracts) ──────────
+// ── Structural host types ──────────────────────────────────────────────────
 
 /** One selectable option of a question. */
 export interface QuestionOption {
@@ -51,16 +44,62 @@ export interface QuestionItem {
   multiSelect?: boolean
 }
 
-/** The subset of mux frames this bridge consumes. Other frame types (session
- *  events, queue snapshots, …) arrive on the same stream and are ignored —
- *  they simply match no branch in handleFrame(). */
-export type MuxFrameView =
-  | { type: 'approval/requested'; sessionId: string; approvalId: string; toolName: string; callId?: string; reason?: string }
-  | { type: 'approval/resolved'; sessionId: string; approvalId: string; outcome: string }
-  | { type: 'question/requested'; sessionId: string; questions: QuestionItem[] }
-  | { type: 'question/resolved'; sessionId: string; questionRpcId: string; outcome: string }
+/** One answer item, matching the host's `AskUserQuestionAnswerItem`. */
+export interface QuestionAnswerItem {
+  id: string
+  selected: string[]
+  custom?: string
+}
 
-/** Structural session row returned by session.list (subset we consume). */
+/** The host's `AskUserQuestionAnswer`, structurally. */
+export interface QuestionAnswer {
+  answers: QuestionAnswerItem[]
+}
+
+/** Outcome vocabulary the approval seam accepts from a claiming answerer. */
+export type ApprovalOutcome = 'allowed-once' | 'rejected'
+
+/** One approval awaiting a human decision, as a chat channel sees it. */
+export interface ApprovalRequestView {
+  /** Session the request belongs to. */
+  sessionId: string
+  /** Tool whose operation needs the decision. */
+  toolName: string
+  /** Exact tool call, when the asker had one. */
+  callId?: string
+  /** Human-readable reason supplied by the asker. */
+  reason?: string
+  /** Cancellation lifetime of the pending request. */
+  signal?: AbortSignal
+}
+
+/** One `ask_user_question` batch awaiting a human answer. */
+export interface QuestionRequestView {
+  /** Session the request belongs to ('' when the host supplied no agent). */
+  sessionId: string
+  /** Questions to display. */
+  questions: QuestionItem[]
+  /** Tool call the card is keyed by, when the host supplied one. */
+  callId?: string
+  /** Cancellation lifetime of the pending request. */
+  signal?: AbortSignal
+}
+
+/**
+ * Inbound prompts the host hands to the bridge. Each resolves with the chat's
+ * answer, or `null` when the chat declined to claim (aborted / another
+ * answerer already settled it) so the host can fall back to `next()`.
+ */
+export interface InteractionSink {
+  /** Surface an approval and resolve with the decision the chat user made. */
+  approval(view: ApprovalRequestView): Promise<ApprovalOutcome | null>
+  /** Surface a question batch and resolve with the chat user's answer. */
+  question(view: QuestionRequestView): Promise<QuestionAnswer | null>
+  /** Forget a prompt another answerer settled, so a late chat reply reports it. */
+  drop(kind: 'approval' | 'question', sessionId: string, callId?: string): void
+}
+
+/** Structural session row the /sessions menu consumes. */
 export interface SessionSummaryLike {
   sessionId: string
   updatedAt: number
@@ -71,7 +110,7 @@ export interface SessionSummaryLike {
   projections?: { values?: { title?: string | null } }
 }
 
-/** Structural workspace row returned by workspace.list (subset we consume). */
+/** Structural workspace row the /workspace menu consumes. */
 export interface WorkspaceViewLike {
   workspaceId: string
   path: string
@@ -79,43 +118,60 @@ export interface WorkspaceViewLike {
   sessionIds: string[]
 }
 
-/** Structural RPC envelope the host returns for unary session/workspace calls. */
-interface RpcResultLike<T> {
-  result: { ok: boolean; value?: T; error?: { code?: string; message?: string } }
+/** Outcome of injecting a chat reply as a follow-up user message. */
+export interface PromptResult {
+  ok: boolean
+  error?: string
 }
 
-/** Minimal structural face of `ctx.apiProxy` used here. */
-export interface ApiProxyLike {
-  events: {
-    mux(
-      request: { rpcId: string; payload: Record<string, never> },
-      signal: AbortSignal,
-    ): AsyncIterable<{ rpcId: string; payload: MuxFrameView }>
-  }
-  respond(message: {
-    type: 'client-response'
-    rpcId: string
-    result:
-      | { ok: true; value: unknown }
-      | { ok: false; error: { code: string; message: string } }
-  }): Promise<{ accepted: true } | { accepted: false; reason: 'not-pending' | 'bad-response' }>
-  sessions: {
-    prompt(request: {
-      rpcId: string
-      payload: { sessionId: string; mode: 'queue' | 'steer'; content: Array<{ type: 'text'; text: string }>; clientTimeZone?: string }
-    }): Promise<{ type: string; rpcId: string; result: { ok: boolean; value?: unknown; error?: { code?: string; message?: string } } }>
-    list(request: { rpcId: string; payload: { cursor?: string } }): Promise<RpcResultLike<{ items: SessionSummaryLike[] }>>
-    create(request: { rpcId: string; payload: { workspaceId?: string; cwd?: string } }): Promise<RpcResultLike<{ sessionId: string }>>
-  }
-  workspace: {
-    list(request: { rpcId: string; payload: Record<string, never> }): Promise<RpcResultLike<{ items: WorkspaceViewLike[]; archivedSessionIds: string[] }>>
-  }
+/** Outcome of creating a session inside a workspace. */
+export interface CreateSessionResult {
+  ok: boolean
+  sessionId?: string
+  error?: string
+}
+
+/**
+ * Host seams the bridge drives. `attach` wires the answerer waterfalls;
+ * everything else is a plain host call. Implemented by `DshInteractionHost`.
+ */
+export interface InteractionHost {
+  /** Register the inbound prompt listeners; returns a disposer. */
+  attach(sink: InteractionSink): () => void
+  /** Inject `text` into `sessionId` as an ordinary follow-up user message. */
+  prompt(sessionId: string, text: string): Promise<PromptResult>
+  /** Recent continuable sessions, or null when the host cannot list them. */
+  listSessions(): Promise<SessionSummaryLike[] | null>
+  /** Registered workspaces, or null when the host cannot list them. */
+  listWorkspaces(): Promise<WorkspaceViewLike[] | null>
+  /** Create (or adopt) a session in a workspace. */
+  createSession(workspaceId: string): Promise<CreateSessionResult>
+}
+
+/** A pending approval pushed to the interactive channels. */
+interface PendingApproval {
+  kind: 'approval'
+  sessionId: string
+  callId?: string
+  toolName: string
+  reason?: string
+  createdAt: number
+  workspace?: string
+  settle(outcome: ApprovalOutcome | null): void
+}
+
+/** A pending question batch pushed to the interactive channels. */
+interface PendingQuestion {
+  kind: 'question'
+  sessionId: string
+  questions: QuestionItem[]
+  createdAt: number
+  workspace?: string
+  settle(answer: QuestionAnswer | null): void
 }
 
 /** A pending answerable interaction pushed to interactive channels. */
-export type PromptInteraction =
-  | { kind: 'approval'; rpcId: string; sessionId: string; approvalId: string; toolName: string; reason?: string; createdAt: number; workspace?: string }
-  | { kind: 'question'; rpcId: string; sessionId: string; questions: QuestionItem[]; createdAt: number; workspace?: string }
+export type PromptInteraction = PendingApproval | PendingQuestion
 
 /** Internal alias. */
 type PendingInteraction = PromptInteraction
@@ -175,7 +231,7 @@ type MenuKind = 's' | 'w'
 
 export class InteractionBridge {
   private ctx: Context
-  private apiProxy: ApiProxyLike
+  private host: InteractionHost
   private hooks: InteractionBridgeHooks
 
   /** Pending answerable interactions in arrival order (newest last). */
@@ -186,28 +242,33 @@ export class InteractionBridge {
   private sessionLabels = new Map<string, string>()
   /** Latest menu alias tables: kind → ordered ids (1-based for the user). */
   private menuAliases = new Map<MenuKind, string[]>()
-  private controller: AbortController | null = null
+  /** Host listener disposer while attached. */
+  private detach: (() => void) | null = null
   private running = false
 
-  constructor(ctx: Context, apiProxy: ApiProxyLike, hooks: InteractionBridgeHooks) {
+  constructor(ctx: Context, host: InteractionHost, hooks: InteractionBridgeHooks) {
     this.ctx = ctx
-    this.apiProxy = apiProxy
+    this.host = host
     this.hooks = hooks
   }
 
-  /** Start consuming the mux stream. Idempotent. */
+  /** Subscribe to the host's answerer waterfalls. Idempotent. */
   start(): void {
     if (this.running) return
     this.running = true
-    this.controller = new AbortController()
-    void this.consumeMux(this.controller.signal)
+    this.detach = this.host.attach({
+      approval: (view) => this.onApprovalRequest(view),
+      question: (view) => this.onQuestionRequest(view),
+      drop: (kind, sessionId, callId) => this.dropPending(kind, sessionId, callId),
+    })
   }
 
-  /** Stop the mux consumer and drop pending state. */
+  /** Detach from the host and release every pending prompt unanswered. */
   dispose(): void {
     this.running = false
-    this.controller?.abort()
-    this.controller = null
+    this.detach?.()
+    this.detach = null
+    for (const entry of this.pending) entry.settle(null)
     this.pending = []
   }
 
@@ -221,7 +282,7 @@ export class InteractionBridge {
     if (workspace) this.sessionLabels.set(sessionId, workspace)
   }
 
-  /** Whether the mux consumer is running. */
+  /** Whether the bridge is attached to the host answerer seams. */
   get isActive(): boolean {
     return this.running
   }
@@ -231,63 +292,67 @@ export class InteractionBridge {
     return this.pending.length
   }
 
-  // ── mux consumption ──────────────────────────────────────────────────────
+  // ── inbound prompts (host → chat) ─────────────────────────────────────────
 
-  private async consumeMux(signal: AbortSignal): Promise<void> {
-    while (this.running && !signal.aborted) {
-      try {
-        const stream = this.apiProxy.events.mux({ rpcId: randomUUID(), payload: {} }, signal)
-        for await (const item of stream) {
-          if (!this.running || signal.aborted) return
-          await this.handleFrame(item.rpcId, item.payload)
-        }
-      } catch (error) {
-        if (signal.aborted || !this.running) return
-        this.ctx.logger.warn('[notify] WeChat interaction mux stream error, reconnecting in 5s:', error)
-        await new Promise((r) => setTimeout(r, 5000))
-      }
+  /**
+   * Surface one approval and hold the seam open until the chat answers. The
+   * host adapter races this against the downstream answerer chain, so the Web
+   * UI can still claim the request first; a `null` resolution means the chat
+   * lost (or the bridge was disposed) and the host falls back to the chain.
+   */
+  private async onApprovalRequest(view: ApprovalRequestView): Promise<ApprovalOutcome | null> {
+    let settle!: (outcome: ApprovalOutcome | null) => void
+    const answered = new Promise<ApprovalOutcome | null>((resolve) => { settle = resolve })
+    const entry: PendingApproval = {
+      kind: 'approval',
+      sessionId: view.sessionId,
+      callId: view.callId,
+      toolName: view.toolName,
+      reason: view.reason,
+      createdAt: Date.now(),
+      settle,
     }
+    this.track(entry)
+    this.noteNotification(view.sessionId)
+    await this.pushPromptSafely(entry, this.formatApprovalPush(entry))
+    return answered
   }
 
-  private async handleFrame(rpcId: string, frame: MuxFrameView): Promise<void> {
-    try {
-      if (frame.type === 'approval/requested') {
-        const entry: PendingInteraction = {
-          kind: 'approval',
-          rpcId,
-          sessionId: frame.sessionId,
-          approvalId: frame.approvalId,
-          toolName: frame.toolName,
-          reason: frame.reason,
-          createdAt: Date.now(),
-        }
-        this.track(entry)
-        this.noteNotification(frame.sessionId)
-        await this.pushPrompt(entry, this.formatApprovalPush(entry))
-      } else if (frame.type === 'question/requested') {
-        const entry: PendingInteraction = {
-          kind: 'question',
-          rpcId,
-          sessionId: frame.sessionId,
-          questions: frame.questions,
-          createdAt: Date.now(),
-        }
-        this.track(entry)
-        this.noteNotification(frame.sessionId)
-        await this.pushPrompt(entry, this.formatQuestionPush(entry))
-      } else if (frame.type === 'approval/resolved') {
-        // Settled elsewhere (e.g. the Web UI answered first) — drop ours.
-        this.pending = this.pending.filter(
-          (p) => !(p.kind === 'approval' && p.approvalId === frame.approvalId && p.sessionId === frame.sessionId),
-        )
-      } else if (frame.type === 'question/resolved') {
-        this.pending = this.pending.filter(
-          (p) => !(p.kind === 'question' && p.rpcId === frame.questionRpcId),
-        )
-      }
-    } catch (error) {
-      this.ctx.logger.warn('[notify] Failed to handle interaction frame %s:', frame.type, error)
+  /** Surface one question batch and hold the seam open until the chat answers. */
+  private async onQuestionRequest(view: QuestionRequestView): Promise<QuestionAnswer | null> {
+    let settle!: (answer: QuestionAnswer | null) => void
+    const answered = new Promise<QuestionAnswer | null>((resolve) => { settle = resolve })
+    const entry: PendingQuestion = {
+      kind: 'question',
+      sessionId: view.sessionId,
+      questions: view.questions,
+      createdAt: Date.now(),
+      settle,
     }
+    this.track(entry)
+    if (view.sessionId) this.noteNotification(view.sessionId)
+    await this.pushPromptSafely(entry, this.formatQuestionPush(entry))
+    return answered
+  }
+
+  /**
+   * Another answerer settled a prompt first (the host reports the downstream
+   * winner). Resolve it with `null` so the waiting seam delegates, and drop it
+   * so a later chat reply reports "已在其他端处理" instead of re-answering.
+   */
+  private dropPending(kind: 'approval' | 'question', sessionId: string, callId?: string): void {
+    const dropped = this.pending.filter((entry) => {
+      if (entry.kind !== kind) return false
+      if (entry.sessionId !== sessionId) return false
+      if (kind === 'approval' && callId !== undefined) {
+        const approval = entry as PendingApproval
+        if (approval.callId !== undefined && approval.callId !== callId) return false
+      }
+      return true
+    })
+    if (dropped.length === 0) return
+    this.pending = this.pending.filter((entry) => !dropped.includes(entry))
+    for (const entry of dropped) entry.settle(null)
   }
 
   private track(entry: PendingInteraction): void {
@@ -339,25 +404,14 @@ export class InteractionBridge {
       return
     }
 
-    const receipt = await this.apiProxy.respond({
-      type: 'client-response',
-      rpcId: pending.rpcId,
-      result: {
-        ok: true,
-        value: { sessionId: pending.sessionId, approvalId: pending.approvalId, outcome },
-      },
-    })
-
-    if (receipt.accepted) {
-      this.pending = this.pending.filter((p) => p !== pending)
-      const label = this.labelOf(pending.sessionId)
-      await this.hooks.pushText(outcome === 'allowed-once'
-        ? `✅ 已批准${label}的 ${pending.toolName} 操作`
-        : `🚫 已拒绝${label}的 ${pending.toolName} 操作`)
-    } else {
-      this.pending = this.pending.filter((p) => p !== pending)
-      await this.hooks.pushText('ℹ️ 该授权请求已在其他端处理或已失效')
-    }
+    // Claim the waterfall slot. The bridge returns from its answerer seam the
+    // moment this resolves, and the racing downstream chain (Web UI) loses.
+    this.pending = this.pending.filter((p) => p !== pending)
+    pending.settle(outcome)
+    const label = this.labelOf(pending.sessionId)
+    await this.hooks.pushText(outcome === 'allowed-once'
+      ? `✅ 已批准${label}的 ${pending.toolName} 操作`
+      : `🚫 已拒绝${label}的 ${pending.toolName} 操作`)
   }
 
   private async answerQuestion(pending: Extract<PendingInteraction, { kind: 'question' }>, reply: string): Promise<void> {
@@ -367,26 +421,15 @@ export class InteractionBridge {
       return
     }
 
-    const receipt = await this.apiProxy.respond({
-      type: 'client-response',
-      rpcId: pending.rpcId,
-      result: {
-        ok: true,
-        value: { sessionId: pending.sessionId, answer: { answers } },
-      },
-    })
-
-    if (receipt.accepted) {
-      this.pending = this.pending.filter((p) => p !== pending)
-      const summary = answers
-        .map((a) => a.selected.join('、') || a.custom || '')
-        .filter(Boolean)
-        .join('；')
-      await this.hooks.pushText(`✅ 已提交回答: ${summary}`)
-    } else {
-      this.pending = this.pending.filter((p) => p !== pending)
-      await this.hooks.pushText('ℹ️ 该问题已在其他端回答或已失效')
-    }
+    // Claim the waterfall slot: the answerer that resolves first wins, so a
+    // browser that answered a moment ago has already dropped this entry.
+    this.pending = this.pending.filter((p) => p !== pending)
+    pending.settle({ answers })
+    const summary = answers
+      .map((a) => a.selected.join('、') || a.custom || '')
+      .filter(Boolean)
+      .join('；')
+    await this.hooks.pushText(`✅ 已提交回答: ${summary}`)
   }
 
   /**
@@ -459,20 +502,12 @@ export class InteractionBridge {
       await this.hooks.pushText('ℹ️ 还没有可续接的会话（先让 DSH 推送一条通知）')
       return
     }
-    const resp = await this.apiProxy.sessions.prompt({
-      rpcId: randomUUID(),
-      payload: {
-        sessionId,
-        mode: 'queue',
-        content: [{ type: 'text', text }],
-        clientTimeZone: 'Asia/Shanghai',
-      },
-    })
-    if (resp.result.ok) {
+    const result = await this.host.prompt(sessionId, text)
+    if (result.ok) {
       await this.hooks.pushText(`📨 已发送到${this.labelOf(sessionId)}会话，排队等待执行`)
     } else {
-      const message = resp.result.error?.message ?? 'unknown error'
-      this.ctx.logger.warn('[notify] WeChat continuation failed: %s', message)
+      const message = result.error ?? 'unknown error'
+      this.ctx.logger.warn('[notify] continuation failed: %s', message)
       await this.hooks.pushText(`⚠️ 发送失败: ${message}`)
     }
   }
@@ -552,12 +587,11 @@ export class InteractionBridge {
 
   /** /workspace — menu of workspaces. */
   private async cmdWorkspaces(): Promise<void> {
-    const resp = await this.apiProxy.workspace.list({ rpcId: randomUUID(), payload: {} })
-    if (!resp.result?.ok || !resp.result.value) {
-      await this.hooks.pushText(`⚠️ 获取工作区列表失败: ${resp.result?.error?.message ?? 'unknown error'}`)
+    const items = await this.host.listWorkspaces()
+    if (!items) {
+      await this.hooks.pushText('⚠️ 获取工作区列表失败：当前宿主未提供工作区注册表')
       return
     }
-    const items = resp.result.value.items
     if (items.length === 0) {
       await this.hooks.pushText('ℹ️ 还没有注册任何工作区（先在 Web 界面创建一个）')
       return
@@ -607,10 +641,8 @@ export class InteractionBridge {
    * conversation when one exists, otherwise create a fresh session there.
    */
   private async selectWorkspace(workspaceId: string): Promise<void> {
-    const wsResp = await this.apiProxy.workspace.list({ rpcId: randomUUID(), payload: {} })
-    const workspace = wsResp.result?.ok
-      ? wsResp.result.value?.items.find((w) => w.workspaceId === workspaceId)
-      : undefined
+    const items = await this.host.listWorkspaces()
+    const workspace = items?.find((w) => w.workspaceId === workspaceId)
     if (!workspace) {
       await this.hooks.pushText('⚠️ 该工作区不存在或已删除，请重新 /workspace 调出菜单')
       return
@@ -625,30 +657,29 @@ export class InteractionBridge {
       return
     }
 
-    const created = await this.apiProxy.sessions.create({ rpcId: randomUUID(), payload: { workspaceId } })
-    if (created.result?.ok && created.result.value?.sessionId) {
-      const sessionId = created.result.value.sessionId
-      this.lastSessionId = sessionId
-      this.sessionLabels.set(sessionId, workspace.title)
+    const created = await this.host.createSession(workspaceId)
+    if (created.ok && created.sessionId) {
+      this.lastSessionId = created.sessionId
+      this.sessionLabels.set(created.sessionId, workspace.title)
       await this.hooks.pushText(`✅ 工作区「${workspace.title}」暂无对话，已新建一个，直接发消息即可开始`)
     } else {
-      await this.hooks.pushText(`⚠️ 在工作区「${workspace.title}」新建对话失败: ${created.result?.error?.message ?? 'unknown error'}`)
+      await this.hooks.pushText(`⚠️ 在工作区「${workspace.title}」新建对话失败: ${created.error ?? 'unknown error'}`)
     }
   }
 
   /** Recent continuable conversations (non-blank, non-subagent), or null on failure. */
   private async listRecentSessions(): Promise<SessionSummaryLike[] | null> {
-    const resp = await this.apiProxy.sessions.list({ rpcId: randomUUID(), payload: {} })
-    if (!resp.result?.ok || !resp.result.value) {
-      await this.hooks.pushText(`⚠️ 获取会话列表失败: ${resp.result?.error?.message ?? 'unknown error'}`)
+    const items = await this.host.listSessions()
+    if (!items) {
+      await this.hooks.pushText('⚠️ 获取会话列表失败：当前宿主未提供会话查询服务')
       return null
     }
-    const items = resp.result.value.items
+    const recent = items
       .filter((s) => !s.blank && s.origin !== 'subagent')
       .slice(0, MENU_PAGE_SIZE)
     // Learn labels/titles so receipts can name sessions later.
-    for (const s of items) this.sessionLabels.set(s.sessionId, this.workspaceLabel(s.cwd))
-    return items
+    for (const s of recent) this.sessionLabels.set(s.sessionId, this.workspaceLabel(s.cwd))
+    return recent
   }
 
   /** Resolve a menu pick: an all-digit ref indexes the latest menu of that
@@ -695,6 +726,20 @@ export class InteractionBridge {
     if (workspace) entry.workspace = workspace
     const handled = (await this.hooks.sendPrompt?.(entry)) === true
     if (!handled) await this.hooks.pushText(plainText)
+  }
+
+  /**
+   * Push an answerable prompt without letting a channel failure escape into the
+   * host's answerer waterfall: a throw there fails the approval closed
+   * ('unavailable') and denies the operation, even though the browser could
+   * still have answered. The seam stays open either way.
+   */
+  private async pushPromptSafely(entry: PendingInteraction, plainText: string): Promise<void> {
+    try {
+      await this.pushPrompt(entry, plainText)
+    } catch (error) {
+      this.ctx.logger.warn('[notify] Failed to push an interaction prompt:', error)
+    }
   }
 
   /** Public plain-text rendering of an approval prompt (channels without buttons). */

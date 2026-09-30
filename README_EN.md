@@ -339,7 +339,7 @@ With interaction enabled, WeChat does not just receive notifications — it **dr
 - 💬 **Continue the conversation** — with nothing pending, any text reply is injected as the next user message into the **most recently notified session**, queued for execution
 - 📱 **Switch conversation/workspace** — send `/sessions` to list recent conversations or `/workspace` to list workspaces (numbered menus), then reply `/sel s <n>` / `/sel w <n>` to switch the continuation target; `/current` shows the current one (same vocabulary as the Telegram command menu)
 
-Interaction runs on the DSH host's in-process API gateway (`ctx.apiProxy`) and shares one pending table with the Web UI: WeChat and the browser race — **first answer wins**, and the other side's prompt auto-dismisses. The `toUserIds` allowlist also gates interaction: replies from non-allowlisted users are ignored (an empty allowlist lets every known user interact).
+Interaction hooks straight into the DSH host's decision seams — the `approval/request` and `user-questions/request` waterfalls — competing for the same decision slot as the Web UI: the plugin prepends itself, pushes the card, immediately releases the downstream chain and races the two, so WeChat/Telegram and the browser are **first answer wins** and the other side is told "handled elsewhere". Continuations go through `ctx.sessionController.prompt` (the Web client's own entry point, cold sessions included); the session/workspace menus read `ctx.sessionController.list` / `ctx.workspaceRegistry`. The `toUserIds` allowlist also gates interaction: replies from non-allowlisted users are ignored (an empty allowlist lets every known user interact).
 
 Config example:
 
@@ -398,7 +398,8 @@ Telegram is the **best interaction experience** of all channels — the Bot API 
 
 Mechanics and safety:
 
-- Runs on the DSH host's in-process API gateway (`ctx.apiProxy`), sharing one pending table with the Web UI: Telegram / WeChat / browser race — **first answer wins**, the rest auto-dismiss
+- Hooks the DSH host's `approval/request` / `user-questions/request` waterfalls (`prepend` + release downstream + race): Telegram / WeChat / browser are **first answer wins**, and a later answer from another surface gets "handled elsewhere"
+- Continuations and the session/workspace menus use `ctx.sessionController` and `ctx.workspaceRegistry`; when the host lacks one, the command answers with a clear message instead of failing silently
 - **Only the configured `chatId` may drive interactions** — a natural allowlist; messages and button taps from anyone else are ignored
 - Every action gets a receipt message ("✅ 已批准", "📨 已发送到会话"), so outcomes are always visible
 
@@ -473,8 +474,13 @@ npm run typecheck
 # Dev mode (host watch)
 npm run dev
 
-# Integration test (settings registration)
+# Integration test (mounts the plugin + exercises the /dsh-notify RPC config channel)
 node test/integration.mjs
+
+# Bridge unit tests: chat reply routing, and the host adapter's
+# waterfall ordering / racing / abort behaviour
+node test/interaction.mjs
+node test/host-interaction.mjs
 
 # Config persistence + RPC channel unit tests
 node --experimental-transform-types test/persist.mjs

@@ -1,7 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { NotifyService } from './service.js'
 import { NotifyPluginConfig } from './types.js'
-import { ApiProxyLike } from './interaction.js'
 import { installNotifyRpc, NOTIFY_RPC_CHANNEL } from './notify-rpc.js'
 import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js'
 
@@ -29,11 +28,15 @@ import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js
  * anything absent from the fiber's inject set, even when the service exists in
  * a parent scope. Declaring `connection` + `webServer` (exactly the pair
  * dsh-pocket uses for its RPC channel) guarantees the /dsh-notify RPC channel
- * can be mounted. `apiProxy` (the API gateway powering WeChat two-way
- * interaction) is NOT a hard inject: cordis inject declarations are
- * all-required and would block activation on deployments without it. It is
- * wired through `ctx.inject(...)` below — a child fiber that runs once the
- * service appears and never blocks the notification core.
+ * can be mounted.
+ *
+ * Every OTHER host service the plugin uses — `sessionController`,
+ * `workspaceRegistry`, `sessionQuery`, `agents`, `sessions` — is soft-resolved
+ * through `ctx.get()` inside `DshInteractionHost` instead of declared here:
+ * cordis `inject` declarations are all-required, so declaring them would block
+ * activation on any composition without them (the session controller is
+ * mounted by the web-app bundle only). Missing services degrade to a clear
+ * chat message for the one command that needs them.
  */
 export const inject = ['connection', 'webServer']
 
@@ -53,13 +56,12 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
   const effective = mergePersisted(config || {}, persisted)
   const service = new NotifyService(ctx, effective)
 
-  // Wire the WeChat interaction bridge as soon as the host API gateway is
-  // available (web profile: immediately; other deployments: never, and
-  // notifications keep working regardless). The callback's fiber carries
-  // apiProxy in its own inject set, so the property access resolves.
-  ctx.inject(['apiProxy'], (proxyCtx) => {
-    service.setApiProxy((proxyCtx as unknown as { apiProxy: ApiProxyLike }).apiProxy)
-  })
+  // Wire the chat interaction bridge (approval/question answerers + session
+  // continuation). It talks to the current host seams directly, so there is
+  // nothing to wait for: the bridge attaches now and stays idle until an
+  // interactive channel is configured. Deployments missing a host service
+  // degrade to a clear chat message per command, never a failed activation.
+  service.attachHost()
 
   // Expose the settings (read/write) channel to the browser so the "通知"
   // settings page can view and edit the configuration. `connection` is declared
@@ -111,7 +113,24 @@ export { WeComNotificationAdapter } from './adapters/wecom.js'
 export { WeChatClawBotAdapter } from './adapters/wechat.js'
 export type { WeChatAdapterState, WeChatAdapterStatus } from './adapters/wechat.js'
 export { InteractionBridge } from './interaction.js'
-export type { ApiProxyLike, InteractionBridgeHooks, MuxFrameView, PromptInteraction, QuestionItem, QuestionOption } from './interaction.js'
+export { DshInteractionHost } from './host-interaction.js'
+export type {
+  ApprovalOutcome,
+  ApprovalRequestView,
+  CreateSessionResult,
+  InteractionBridgeHooks,
+  InteractionHost,
+  InteractionSink,
+  PromptInteraction,
+  PromptResult,
+  QuestionAnswer,
+  QuestionAnswerItem,
+  QuestionItem,
+  QuestionOption,
+  QuestionRequestView,
+  SessionSummaryLike,
+  WorkspaceViewLike,
+} from './interaction.js'
 export { TelegramNotificationAdapter } from './adapters/telegram.js'
 export { NOTIFY_SETTINGS_NAMESPACE, NOTIFY_SETTINGS_SCHEMA, settingsToConfig, configToSettings } from './settings.js'
 export type { NotifySettings } from './settings.js'
