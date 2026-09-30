@@ -42,6 +42,22 @@ if (!code.startsWith(required)) {
 const root = process.cwd().replaceAll('\\', '/')
 code = code.replace(/(dsh-css:)([^\n"]*?)(src[/\\][^\n"]*?\.css\.mjs)/g, (_all, prefix, _dir, rel) =>
   prefix + rel.replaceAll('\\', '/'))
+
+// --- 3. deterministic CSS-module class maps --------------------------------
+// tsdown emits the class map from an unordered map, so its KEY ORDER varies run
+// to run — same content, different bytes, and a dirty committed artifact after
+// every build. Sort the entries by byte order, one per line, so the sourcemap's
+// line numbers stay valid.
+code = code.replace(/(var \w+_module_css_default = \{\n)([\s\S]*?)(\n\t*\};)/g, (_all, head, body, tail) => {
+  // The emitter leaves the trailing comma on whichever entry happened to be
+  // last, so strip every comma, sort, then re-add it to all but the last line.
+  const entries = body.split('\n')
+    .map((line) => line.replace(/,\s*$/, ''))
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
+  const normalized = entries.map((line, index) => (index === entries.length - 1 ? line : `${line},`))
+  return head + normalized.join('\n') + tail
+})
+
 // Guard: this builder's own checkout path must not survive anywhere.
 const leaks = [
   ...code.matchAll(new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')),
