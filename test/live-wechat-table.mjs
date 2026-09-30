@@ -9,8 +9,8 @@ import { Context } from '@deepseek-ai/cordis'
 import { WeChatClawBotAdapter } from '../lib/adapters/wechat.js'
 
 const ctx = new Context()
-ctx.provide('connection', { rpc: { handle: () => () => {} } })
-ctx.provide('webServer', {})
+ctx.provide('connection', { requestRejection: () => undefined })
+ctx.provide('webServer', { register: () => () => {} })
 
 const adapter = new WeChatClawBotAdapter(ctx, { enabled: true })
 

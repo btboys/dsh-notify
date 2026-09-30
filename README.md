@@ -441,9 +441,9 @@ Webhook 会收到以下 JSON payload：
 
 `dsh-notify-plugin` 会在 DSH Web 的 **设置** 侧边栏注册一个与「通用设置」「模型」「插件」同级的一级入口 **「通知」**（与 dsh-pocket 的「手机访问」同款入口形态），在那里可配置启用开关、系统 / Webhook / 企业微信 / 微信 (ClawBot) / Telegram 渠道、触发事件与标题前缀。微信板块内置扫码登录面板（本地渲染二维码，不经过第三方服务）与登录状态展示。
 
-配置页的读写走 **loopback RPC 通道**：
+配置页的读写走 **已鉴权的 `/dsh-notify` 通道**：
 
-1. **host 端**（`src/notify-rpc.ts` + `src/index.ts`）用 `ctx.connection.rpc.handle` 注册 `/dsh-notify` 逻辑通道，处理 `notify.config.get/set`；写入时更新运行中的 `NotifyService` 并持久化到 `$DSH_HOME/notify/config.json`，重启后自动合并生效。
+1. **host 端**（`src/notify-rpc.ts` + `src/index.ts`）在 host `webServer` 上注册 `/dsh-notify` 前缀路由（用 `connection.requestRejection` 套用与内置通道相同的 Host/Origin + 浏览器鉴权闸门），处理 `notify.config.get/set`；写入时更新运行中的 `NotifyService` 并持久化到 `$DSH_HOME/notify/config.json`，重启后自动合并生效。**不使用 `ctx.connection.rpc.handle()`**：当前 dsh-client-connection 的该注册表把 Connection 服务自身的 context 当作路由所有者，第三方插件调用会抛 `cannot get property "webServer" without inject`，并连带整个插件激活失败。
 2. **client 端**（`src/client/`，tsdown 构建为 `client/client.js`）注册 `settings.section`（id `notify`），页面通过 `ctx.connection.rpc.call` 读写配置——不依赖 `settingsScope`，也不依赖 DSH 内部 settings 命名空间注入。
 3. 以 bundle 方式在 host 平面挂载：
 

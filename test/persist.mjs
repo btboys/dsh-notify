@@ -14,7 +14,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync, readdirSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadPersistedConfig, mergePersisted, persistConfig, clearPersistedConfig } from '../src/persist.ts'
-import { installNotifyRpc, NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS } from '../src/notify-rpc.ts'
+import { createNotifyRpcHandler, installNotifyRpc, NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS } from '../src/notify-rpc.ts'
 
 let passed = 0
 const asserts = []
@@ -65,31 +65,81 @@ check('clear empties persisted config (file remains, {})', () => {
   if (loadPersistedConfig()?.enabled !== undefined) throw new Error('expected empty config')
 })
 
-// ---- 5. RPC channel get/set ----------------------------------------------
+// ---- 5. RPC endpoint dispatch --------------------------------------------
 const log = { warn: () => {} }
-let capturedHandler = null
-const rpcFace = { handle: (channel, handler) => { capturedHandler = handler; return () => {} } }
 const fakeService = { config: { titlePrefix: '[R]' } }
-installNotifyRpc(rpcFace, {
+const bridge = {
   read: () => fakeService.config,
   write: (p) => { fakeService.config = { ...fakeService.config, ...p } },
-}, log)
-const getRes = await capturedHandler(NOTIFY_ENDPOINTS.configGet, {})
+}
+const handler = createNotifyRpcHandler(bridge)
+const getRes = await handler(NOTIFY_ENDPOINTS.configGet, {})
 check('configGet returns current config', () => {
   if (!getRes.ok || getRes.value?.titlePrefix !== '[R]') throw new Error('configGet wrong')
 })
-const setRes = await capturedHandler(NOTIFY_ENDPOINTS.configSet, { titlePrefix: '[S]' })
+const setRes = await handler(NOTIFY_ENDPOINTS.configSet, { titlePrefix: '[S]' })
 check('configSet applies and returns new config', () => {
   if (!setRes.ok || setRes.value?.titlePrefix !== '[S]') throw new Error('configSet not applied')
   if (fakeService.config.titlePrefix !== '[S]') throw new Error('service not updated')
 })
-const badRes = await capturedHandler('unknown.endpoint', {})
+const badRes = await handler('unknown.endpoint', {})
 check('unknown endpoint fails as bad-request', () => {
   if (badRes.ok || badRes.error?.code !== 'bad-request') throw new Error('expected bad-request')
 })
-const boomRes = await capturedHandler(NOTIFY_ENDPOINTS.configSet, null)
+const boomRes = await handler(NOTIFY_ENDPOINTS.configSet, null)
 check('configSet with non-object payload fails', () => {
   if (boomRes.ok) throw new Error('expected failure')
+})
+
+// ---- 6. Route mounting (the dsh-client-connection ownership trap) ---------
+/** A host-shaped context whose inject() hands the callback both services. */
+function makeHostCtx({ connection, webServer }) {
+  const effects = []
+  return {
+    effects,
+    ctx: {
+      inject: (_names, callback) => callback({ connection, webServer, effect: (fn) => { effects.push(fn()) } }),
+    },
+  }
+}
+
+let mounted = null
+const host = makeHostCtx({
+  connection: { requestRejection: () => undefined },
+  webServer: { register: (route) => { mounted = route; return () => { mounted = null } } },
+})
+installNotifyRpc(host.ctx, bridge, log)
+check('installs a prefix route at the channel path', () => {
+  if (mounted?.kind !== 'prefix' || mounted?.path !== NOTIFY_RPC_CHANNEL) {
+    throw new Error(`wrong route: ${mounted?.kind} ${mounted?.path}`)
+  }
+})
+
+// Regression: the old code called `connection.rpc.handle(...)`, whose registry
+// captures the Connection service's OWN context as route owner and then reads
+// `owner.webServer` — a throw that aborted the whole plugin activation with
+// `cannot get property "webServer" without inject`. Installing must neither
+// call that API nor throw when a host still exposes it.
+let legacyCalled = false
+const legacyHost = makeHostCtx({
+  connection: {
+    rpc: { handle: () => { legacyCalled = true; throw new Error('cannot get property "webServer" without inject') } },
+  },
+  webServer: { register: () => () => {} },
+})
+let threw = null
+try { installNotifyRpc(legacyHost.ctx, bridge, log) } catch (error) { threw = error }
+check('a legacy connection.rpc face neither throws nor is used', () => {
+  if (threw !== null) throw new Error(`install threw: ${threw.message}`)
+  if (legacyCalled) throw new Error('must not call connection.rpc.handle')
+})
+
+// A host without webServer (headless) warns instead of failing activation.
+let warned = 0
+const bareHost = { inject: (_names, callback) => callback({ effect: () => {} }) }
+installNotifyRpc(bareHost, bridge, { warn: () => { warned++ } })
+check('a host without connection/webServer warns and skips the channel', () => {
+  if (warned !== 1) throw new Error(`expected one warning, got ${warned}`)
 })
 
 // ---- summary -------------------------------------------------------------

@@ -5,11 +5,11 @@
 import { Context } from '@deepseek-ai/cordis'
 import notifyPlugin from '../lib/index.js'
 
-/** Create a test Context with the host services the plugin injects. */
+/** Create a test Context with the host services the /dsh-notify route needs. */
 function makeCtx() {
   const ctx = new Context()
-  ctx.provide('connection', { rpc: { handle: () => () => {} } })
-  ctx.provide('webServer', {})
+  ctx.provide('connection', { requestRejection: () => undefined })
+  ctx.provide('webServer', { register: () => () => {} })
   return ctx
 }
 

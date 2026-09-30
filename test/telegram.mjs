@@ -23,8 +23,8 @@ import { TelegramNotificationAdapter } from '../lib/adapters/telegram.js'
 
 function makeCtx() {
   const ctx = new Context()
-  ctx.provide('connection', { rpc: { handle: () => () => {} } })
-  ctx.provide('webServer', {})
+  ctx.provide('connection', { requestRejection: () => undefined })
+  ctx.provide('webServer', { register: () => () => {} })
   return ctx
 }
 

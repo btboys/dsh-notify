@@ -23,31 +23,20 @@ import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js
  */
 
 /**
- * Host services this plugin depends on. Cordis resolves ONLY the services a
- * plugin declares here: `ctx.get(name)` / `ctx.connection` return undefined for
- * anything absent from the fiber's inject set, even when the service exists in
- * a parent scope. Declaring `connection` + `webServer` (exactly the pair
- * dsh-pocket uses for its RPC channel) guarantees the /dsh-notify RPC channel
- * can be mounted.
+ * Host services this plugin REQUIRES before activation — none.
  *
- * Every OTHER host service the plugin uses — `sessionController`,
- * `workspaceRegistry`, `sessionQuery`, `agents`, `sessions` — is soft-resolved
- * through `ctx.get()` inside `DshInteractionHost` instead of declared here:
- * cordis `inject` declarations are all-required, so declaring them would block
- * activation on any composition without them (the session controller is
- * mounted by the web-app bundle only). Missing services degrade to a clear
- * chat message for the one command that needs them.
+ * Everything the plugin touches is either optional or soft-injected:
+ * `connection` + `webServer` (the `/dsh-notify` settings channel) through
+ * `ctx.inject(...)` inside `installNotifyRpc`, and `sessionController` /
+ * `workspaceRegistry` / `sessionQuery` / `agents` / `sessions` through
+ * `ctx.get()` inside `DshInteractionHost`. Cordis `inject` declarations are
+ * all-required, so listing any of them here would block activation on a
+ * composition that lacks it (headless has no `webServer`), while the plugin's
+ * core — notifications on `session/event` — works everywhere. Missing services
+ * degrade to a warning or a clear chat message for the one feature that needs
+ * them.
  */
-export const inject = ['connection', 'webServer']
-
-/** Require a host service, or null when Cordis has not provided it. */
-function serviceOf(ctx: Context, name: string): unknown {
-  try {
-    return ctx.get(name)
-  } catch {
-    return null
-  }
-}
+export const inject: string[] = []
 
 export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) {
   // The Web settings page edits configuration through the /dsh-notify RPC
@@ -64,11 +53,10 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
   service.attachHost()
 
   // Expose the settings (read/write) channel to the browser so the "通知"
-  // settings page can view and edit the configuration. `connection` is declared
-  // via `inject`, so `ctx.get('connection').rpc` resolves here.
-  const connection = serviceOf(ctx, 'connection') as { rpc?: { handle(...args: unknown[]): unknown } } | null
-  const rpc = connection?.rpc
-  const disposeRpc = installNotifyRpc(rpc, {
+  // settings page can view and edit the configuration. The route registers
+  // itself on the host web server once `connection` + `webServer` exist (see
+  // notify-rpc.ts for why it is not `connection.rpc.handle()`).
+  installNotifyRpc(ctx, {
     read: () => service.getConfig(),
     write: (partial) => {
       service.updateConfig(partial as Partial<NotifyPluginConfig>)
@@ -85,10 +73,11 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
   // the `/dsh-notify` RPC channel above; persisted writes live in
   // `$DSH_HOME/notify/config.json`.
 
-  // Register cleanup using effect
+  // Register cleanup using effect. The RPC route is owned by the
+  // `ctx.inject(...)` child fiber inside installNotifyRpc, so cordis disposes
+  // it with the plugin; only the service needs explicit teardown here.
   ctx.effect(() => {
     return async () => {
-      disposeRpc()
       await service.dispose()
     }
   }, 'notify plugin cleanup')

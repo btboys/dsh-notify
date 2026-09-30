@@ -442,9 +442,9 @@ Webhooks receive this JSON payload:
 
 `dsh-notify-plugin` registers a top-level **「通知」** entry in the DSH Web **Settings** sidebar (same level as "通用设置" / "模型" / "插件", same shape as dsh-pocket's "手机访问"), where you can configure the master switch, the system / webhook / WeCom / WeChat (ClawBot) / Telegram channels, event filters and the title prefix. The WeChat section embeds a scan-to-login panel (QR rendered locally, no third-party service) with live login status.
 
-The settings page reads/writes over a **loopback RPC channel**:
+The settings page reads/writes over the **authenticated `/dsh-notify` channel**:
 
-1. **Host side** (`src/notify-rpc.ts` + `src/index.ts`) registers the `/dsh-notify` logical channel with `ctx.connection.rpc.handle`, serving `notify.config.get/set`; writes update the running `NotifyService` and persist to `$DSH_HOME/notify/config.json`, auto-merged on restart.
+1. **Host side** (`src/notify-rpc.ts` + `src/index.ts`) registers the `/dsh-notify` prefix route on the host `webServer` (fenced by `connection.requestRejection`, the same Host/Origin + browser-auth gate the built-in channels use), serving `notify.config.get/set`; writes update the running `NotifyService` and persist to `$DSH_HOME/notify/config.json`, auto-merged on restart. It deliberately does **not** use `ctx.connection.rpc.handle()`: on current dsh-client-connection that registry makes the Connection service's own context the route owner, so a third-party call throws `cannot get property "webServer" without inject` and takes the whole plugin activation down with it.
 2. **Client side** (`src/client/`, built by tsdown into `client/client.js`) registers `settings.section` (id `notify`); the page reads/writes config via `ctx.connection.rpc.call` — independent of `settingsScope` and of DSH's internal settings namespace injection.
 3. Mount as a bundle on the host plane:
 
