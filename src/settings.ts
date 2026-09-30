@@ -1,14 +1,20 @@
-import { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { NotifyPluginConfig } from './types.js'
 
 /**
- * Settings namespace for the notify plugin.
- * This must be added to the apiproxy `WEB_SETTINGS_NAMESPACES` allowlist
- * to appear in the Web "插件配置" (Plugin Configuration) page.
+ * Key of the notify configuration section, kept for consumers that read
+ * notify configuration under this name.
+ *
+ * Historical note: this was `settingsNamespace('notify')` from
+ * `@deepseek-ai/dsh-settings` until 1.4.2. That runtime helper (and the whole
+ * namespace-registration API) was removed from dsh-settings in 0.1.2-alpha.2,
+ * and importing the missing export is an ESM link error that stops the plugin
+ * from loading at all on any harness since. A namespace is a plain string now;
+ * nothing in this plugin needs the `settings` service — the Web page reads and
+ * writes configuration through the `/dsh-notify` RPC channel
+ * (see `notify-rpc.ts`).
  */
-export const NOTIFY_SETTINGS_NAMESPACE = settingsNamespace('notify')
+export const NOTIFY_SETTINGS_NAMESPACE = 'notify'
 
 /**
  * The notify fields a user owns through the Web settings page.
@@ -183,39 +189,13 @@ export function configToSettings(config: NotifyPluginConfig): NotifySettings {
   }
 }
 
-/**
- * Hooks a NotifyService exposes to the settings wiring: the service must
- * re-resolve its config whenever the stored section changes.
+/*
+ * `installNotifySettings()` lived here until 1.4.4. It registered a `notify`
+ * settings namespace through `ctx.settings.register(ns, schema, { base })`,
+ * an API that no longer exists: current dsh-settings exposes a
+ * profile-entry-based `SettingsForms` service (`describe` / `update` /
+ * `replace` / `mutate` / `configure`) with no namespace registration at all.
+ * The call only ever produced a caught `TypeError` on modern harnesses, so it
+ * was removed. The Web page and every other consumer use the `/dsh-notify`
+ * RPC channel (`notify-rpc.ts`) instead.
  */
-export interface NotifySettingsHooks {
-  /** Apply a resolved settings section to the running service. */
-  apply: (config: NotifyPluginConfig) => void
-}
-
-/**
- * Register the notify settings namespace on the host plane.
- * The registration is an effect on the calling plugin's fiber; disposing
- * the fiber removes the namespace. Must be mounted on the HOST plane
- * (e.g. `~/.dsh/profiles/web/cordis.patch.yml`) — agent-preset mounts
- * cannot register settings namespaces.
- *
- * @param ctx - host cordis context.
- * @param entry - the plugin's composition entry section (used as settings `base` layer).
- * @param hooks - service wiring: apply each resolved section to the service.
- */
-export function installNotifySettings(ctx: Context, entry: NotifySettings, hooks: NotifySettingsHooks): void {
-  // Access the settings service via ctx.get (a plain property read would throw
-  // "cannot get property settings without inject").
-  const settings = ctx.get('settings') as { register(ns: string, schema: unknown, options?: { base?: unknown }): { get(): NotifySettings; watch(cb: () => void): () => void } } | undefined
-  if (!settings) return
-
-  // Direct registration on the settings service (synchronous, unlike
-  // installSettingsSection which defers through ctx.inject).
-  const scope = settings.register(NOTIFY_SETTINGS_NAMESPACE, NOTIFY_SETTINGS_SCHEMA, {
-    base: entry,
-  })
-  hooks.apply(settingsToConfig(scope.get()))
-  scope.watch(() => {
-    hooks.apply(settingsToConfig(scope.get()))
-  })
-}

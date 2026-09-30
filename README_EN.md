@@ -78,7 +78,7 @@ Dependencies:
 
 ### 1. Install as a bundle on the host plane
 
-> ⚠️ Mount on the **host plane** (web profile), NOT in an agent preset. Host mounting is required to register the settings namespace and listen to `session/event` correctly.
+> ⚠️ Mount on the **host plane** (web profile), NOT in an agent preset. Host mounting is required to listen to `session/event` and register the `/dsh-notify` RPC channel correctly.
 
 ```bash
 dsh plugin --profile web add dsh-notify-plugin
@@ -453,7 +453,7 @@ The settings page reads/writes over a **loopback RPC channel**:
 
 Then restart / refresh DSH Web and open **Settings → 通知** to see and edit everything.
 
-> 💡 The page **saves in full**: clicking "保存" writes back the entire draft and persists it across restarts. The leftover `notify` settings-namespace registration (`src/settings.ts`) remains for consumers that read that namespace; the settings page itself no longer depends on it.
+> 💡 The page **saves in full**: clicking "保存" writes back the entire draft and persists it across restarts. The page goes through the `/dsh-notify` RPC only; the plugin neither registers nor depends on a DSH settings namespace (that API was removed from dsh-settings in 0.1.2-alpha.2, and 1.4.4 deleted every remaining reference).
 
 ## 🛠️ Development
 

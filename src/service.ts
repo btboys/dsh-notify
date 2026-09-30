@@ -725,20 +725,13 @@ export class NotifyService extends Service {
       }
     })
     
-    // Listen for confirmation events (authorization requests are handled above
-    // via the session/event 'approval/asked' branch, which carries richer
-    // context — do NOT also listen to the host 'approval/request' waterfall or
-    // the notification fires twice).
-    this.ctx.on('confirm/request' as any, async (data: any) => {
-      debug('confirm/request received')
-      this.ctx.logger.debug('[notify] Confirmation requested')
-      await this.notifyConfirmationRequired(
-        '需要确认',
-        data?.message || '操作需要您的确认',
-        data
-      )
-    })
-    
+    // NOTE: there is no host `confirm/request` event to listen to. Until 1.4.4
+    // this file subscribed to `confirm/request` with an `as any` cast; no such
+    // event exists on current harnesses (nor in the harness repository's event
+    // history), so it never fired. A human-facing confirmation reaches this
+    // plugin through the two paths above: `approval/asked` (authorization) and
+    // the `ask_user_question` tool call (confirmationRequired).
+
     debug('event listeners registered')
   }
   

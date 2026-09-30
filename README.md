@@ -78,7 +78,7 @@ npm run build
 
 ### 1. 以 bundle 方式安装到 host 平面
 
-> ⚠️ 必须在 **host 平面**（web profile）挂载，而不是 agent preset。Host 挂载才能注册 settings 命名空间并正确监听 `session/event`。
+> ⚠️ 必须在 **host 平面**（web profile）挂载，而不是 agent preset。Host 挂载才能正确监听 `session/event` 并注册 `/dsh-notify` RPC 通道。
 
 ```bash
 dsh plugin --profile web add dsh-notify-plugin
@@ -452,7 +452,7 @@ Webhook 会收到以下 JSON payload：
 
 完成后重启 / 刷新 DSH Web，打开 **设置 → 通知**，即可看到并编辑全部配置。
 
-> 💡 页面为**全量保存**：点击「保存」会把当前草稿整体写回并持久化，重启后仍生效。残留的 `notify` settings 命名空间注册（`src/settings.ts`）保留以便兼容读取该命名空间的消费者，本配置页不再依赖它。
+> 💡 页面为**全量保存**：点击「保存」会把当前草稿整体写回并持久化，重启后仍生效。本页只走 `/dsh-notify` RPC；插件不注册、也不依赖 DSH 的 settings 命名空间（该 API 自 dsh-settings 0.1.2-alpha.2 起已被移除，1.4.4 已删除全部相关代码）。
 
 ## 🛠️ 开发
 

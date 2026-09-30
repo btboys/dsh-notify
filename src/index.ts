@@ -2,7 +2,6 @@ import { Context } from '@deepseek-ai/cordis'
 import { NotifyService } from './service.js'
 import { NotifyPluginConfig } from './types.js'
 import { ApiProxyLike } from './interaction.js'
-import { configToSettings, installNotifySettings } from './settings.js'
 import { installNotifyRpc, NOTIFY_RPC_CHANNEL } from './notify-rpc.js'
 import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js'
 
@@ -30,13 +29,11 @@ import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js
  * anything absent from the fiber's inject set, even when the service exists in
  * a parent scope. Declaring `connection` + `webServer` (exactly the pair
  * dsh-pocket uses for its RPC channel) guarantees the /dsh-notify RPC channel
- * can be mounted. `settings` is deliberately NOT declared: it is not a Cordis
- * host service, so declaring it would block activation while Cordis waits.
- * `apiProxy` (the API gateway powering WeChat two-way interaction) is likewise
- * NOT a hard inject: cordis inject declarations are all-required and would
- * block activation on deployments without it. It is wired through
- * `ctx.inject(...)` below — a child fiber that runs once the service appears
- * and never blocks the notification core.
+ * can be mounted. `apiProxy` (the API gateway powering WeChat two-way
+ * interaction) is NOT a hard inject: cordis inject declarations are
+ * all-required and would block activation on deployments without it. It is
+ * wired through `ctx.inject(...)` below — a child fiber that runs once the
+ * service appears and never blocks the notification core.
  */
 export const inject = ['connection', 'webServer']
 
@@ -79,18 +76,12 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
     wechatRelogin: () => service.reloginWechat(),
   }, { warn: (...args) => ctx.logger.warn(...(args as [string, ...unknown[]])) })
 
-  // Keep the legacy settings-namespace registration for consumers that read
-  // the `notify` namespace through the DSH settings service.
-  if (serviceOf(ctx, 'settings')) {
-    try {
-      installNotifySettings(ctx, configToSettings(effective), {
-        apply: (next) => service.updateConfig(next),
-      })
-      ctx.logger.info('[notify] Settings namespace "notify" registered')
-    } catch (error) {
-      ctx.logger.warn('[notify] Failed to register settings namespace:', error)
-    }
-  }
+  // NOTE: no legacy `settings` namespace registration. Current dsh-settings
+  // exposes `SettingsForms` (profile-entry configuration forms) with no
+  // `register(ns, schema)` API, and the removed `installNotifySettings()` call
+  // could only ever throw-and-log here. The Web page reads and writes through
+  // the `/dsh-notify` RPC channel above; persisted writes live in
+  // `$DSH_HOME/notify/config.json`.
 
   // Register cleanup using effect
   ctx.effect(() => {
