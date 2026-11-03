@@ -13,6 +13,7 @@ A notification plugin for DeepSeek Harness (DSH) with multiple channels, automat
 - 🖥️ **System notifications** — native desktop notifications (macOS / Windows / Linux) with custom alert sounds (macOS sound names / custom audio files / per-event-type overrides)
 - 🔗 **Webhook** — custom HTTP webhook to any endpoint
 - 💼 **WeCom bot** — Enterprise WeChat group-bot notifications with markdown support
+- 🤖 **WeCom AI Bot (智能机器人)** — WebSocket long-connection channel with markdown notifications plus two-way interaction via button cards (approve / answer / continue); scan-to-associate in the settings page fills BotId/Secret automatically
 - 💬 **WeChat ClawBot** — push to your **personal WeChat** via Tencent's official iLink protocol, scan-to-login; two-way interaction (approve authorizations / answer questions / continue conversations right from WeChat)
 - ✈️ **Telegram bot** — Telegram Bot API notifications with HTML / MarkdownV2 rich text; two-way interaction with **inline buttons** (approve authorizations / answer questions / continue conversations)
 - 📝 **Slim content** — the notification body carries only the user's prompt and the assistant's reply summary (paragraph structure preserved, thinking/reasoning never leaked); tools/turn/duration stay in structured metadata
@@ -161,6 +162,15 @@ channels:
       # - user_id_1
       # - user_id_2
 
+  # WeCom AI Bot (智能机器人, WebSocket long connection, two-way interaction)
+  wecomAibot:
+    enabled: false
+    botId: ''                # AI Bot BotId (use "Scan to associate" in the settings page to fill automatically)
+    secret: ''               # AI Bot Secret (same)
+    toChatIds: []            # optional: restrict push targets (userid for DMs, chatid for groups); empty pushes to every chat that messaged the bot
+    interactive: true        # optional: two-way interaction (default true) — reply in WeCom to approve/answer/continue
+    # sessionFile: /path/to/wecom-aibot-session.json  # optional: session file path (default <DSH_HOME>/notify/wecom-aibot-session.json)
+
   # WeChat ClawBot (personal WeChat, Tencent's official iLink channel)
   wechat:
     enabled: false
@@ -205,6 +215,12 @@ titlePrefix: ''
 | `channels.wecom.enabled` | boolean | `false` | Enable WeCom notifications |
 | `channels.wecom.webhookUrl` | string | `''` | WeCom webhook URL (required) |
 | `channels.wecom.msgType` | string | `'markdown'` | Message type: `markdown` or `text` |
+| `channels.wecomAibot.enabled` | boolean | `false` | Enable WeCom AI Bot (智能机器人) notifications |
+| `channels.wecomAibot.botId` | string | `''` | AI Bot BotId (required; filled by scan-to-associate) |
+| `channels.wecomAibot.secret` | string | `''` | AI Bot Secret (required; filled by scan-to-associate) |
+| `channels.wecomAibot.toChatIds` | string[] | `[]` | Restrict push targets; empty pushes to every chat that messaged the bot |
+| `channels.wecomAibot.interactive` | boolean | `true` | Two-way interaction: WeCom replies approve / answer / continue sessions |
+| `channels.wecomAibot.sessionFile` | string | `''` | Session file path (default `<DSH_HOME>/notify/wecom-aibot-session.json`) |
 | `channels.wechat.enabled` | boolean | `false` | Enable WeChat ClawBot (personal WeChat) notifications |
 | `channels.wechat.toUserIds` | string[] | `[]` | Restrict push targets; empty pushes to every user who messaged the bot |
 | `channels.wechat.interactive` | boolean | `true` | Two-way interaction: WeChat replies approve / answer / continue sessions |
@@ -312,6 +328,15 @@ WeCom notifications are formatted as clean markdown:
 💬 帮我读一下当前目录，看看项目结构
 🤖 目录里有 src、lib、test 等目录…
 ```
+
+## 🤖 WeCom AI Bot Setup (智能机器人)
+
+The AI Bot channel uses a **WebSocket long connection** (official `@wecom/aibot-node-sdk`) — no public callback URL needed — and supports proactive push plus two-way interaction. Notifications arrive as **proactive markdown messages** (same rendering as the group webhook bot; WeCom rejects a proactive text_notice card with errcode 42045 unless it carries a `card_action` jump target, and a notification has no meaningful URL); approvals arrive with **✅/❌ button cards**; single-select questions with up to 6 options are sent as a **complete text message** (numbered options, reply with the index) — WeCom clips a card's quote area and shrinks button labels, so long prompts cannot fit a card; Multi-select, multi-question batches and larger lists use text replies until an official selection callback contract or real-device sample is verified; Y/N text, option numbers and free text (continue session) also work, first answer wins vs the Web UI. /sessions and /workspace menus are button cards too when they fit 6 entries, otherwise they fall back to numbered text.
+
+1. In the settings page's "WeCom AI Bot" section, click **Scan to associate** and scan with 企业微信 to pick the bot — BotId/Secret are filled in and saved automatically
+   (or manually: create an AI Bot in the WeCom admin console and paste BotId/Secret)
+2. Message the bot once in WeCom — that chat becomes pushable (chat IDs persist to `<DSH_HOME>/notify/wecom-aibot-session.json` and survive restarts)
+3. Optional: set `toChatIds` to restrict push targets; the same list gates interactive replies
 
 ## 💬 WeChat ClawBot Setup (personal WeChat)
 
@@ -440,7 +465,7 @@ Webhooks receive this JSON payload:
 
 ## 🖥️ Configure in the Web UI (Settings → 通知)
 
-`dsh-notify-plugin` registers a top-level **「通知」** entry in the DSH Web **Settings** sidebar (same level as "通用设置" / "模型" / "插件", same shape as dsh-pocket's "手机访问"), where you can configure the master switch, the system / webhook / WeCom / WeChat (ClawBot) / Telegram channels, event filters and the title prefix. The WeChat section embeds a scan-to-login panel (QR rendered locally, no third-party service) with live login status.
+`dsh-notify-plugin` registers a top-level **「通知」** entry in the DSH Web **Settings** sidebar (same level as "通用设置" / "模型" / "插件", same shape as dsh-pocket's "手机访问"), where you can configure the master switch, the system / webhook / WeCom / WeCom AI Bot / WeChat (ClawBot) / Telegram channels, event filters and the title prefix. The WeChat section embeds a scan-to-login panel (QR rendered locally, no third-party service) with live login status; the WeCom AI Bot section embeds a "Scan to associate" panel that fills BotId/Secret automatically and shows the connection state.
 
 The settings page reads/writes over the **authenticated `/dsh-notify` channel**:
 

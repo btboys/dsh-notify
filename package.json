@@ -48,6 +48,7 @@
     "notification",
     "webhook",
     "wecom",
+    "wecom-aibot",
     "wechat",
     "clawbot",
     "deepseek-harness"
@@ -68,6 +69,7 @@
   },
   "dependencies": {
     "@deepseek-ai/cosmokit": "^1.8.2",
+    "@wecom/aibot-node-sdk": "^1.0.7",
     "axios": "^1.6.0",
     "qrcode": "^1.5.4"
   },

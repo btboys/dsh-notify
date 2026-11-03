@@ -396,6 +396,15 @@ export class InteractionBridge {
     await this.continueConversation(reply)
   }
 
+  /** Card replies must target the exact live prompt, never the latest one. */
+  async handlePromptReply(userId: string, text: string, entry: PromptInteraction): Promise<boolean> {
+    if (!this.running || !this.hooks.canInteract(userId)
+      || !this.pending.includes(entry) || Date.now() - entry.createdAt > PENDING_TTL_MS) return false
+    if (entry.kind === 'approval') await this.answerApproval(entry, text.trim())
+    else await this.answerQuestion(entry, text.trim())
+    return !this.pending.includes(entry)
+  }
+
   private async answerApproval(pending: Extract<PendingInteraction, { kind: 'approval' }>, reply: string): Promise<void> {
     const word = reply.toLowerCase()
     const outcome = APPROVE_WORDS.has(word) ? 'allowed-once' : REJECT_WORDS.has(word) ? 'rejected' : null

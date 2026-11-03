@@ -16,6 +16,8 @@ export const NOTIFY_ENDPOINTS = Object.freeze({
   configSet: 'notify.config.set',
   wechatStatus: 'notify.wechat.status',
   wechatRelogin: 'notify.wechat.relogin',
+  wecomAibotStatus: 'notify.wecom-aibot.status',
+  wecomAibotQrStart: 'notify.wecom-aibot.qr-start',
 })
 
 /** The notification config the settings page edits (see src/types.ts). */
@@ -25,6 +27,7 @@ export interface NotifyRpcConfig {
     system?: { enabled?: boolean; sound?: boolean; soundName?: string; soundFile?: string; icon?: string }
     webhook?: { enabled?: boolean; url?: string; method?: 'POST' | 'PUT' | 'PATCH'; timeout?: number; headers?: Record<string, string> }
     wecom?: { enabled?: boolean; webhookUrl?: string; mentions?: string[]; msgType?: 'text' | 'markdown' }
+    wecomAibot?: { enabled?: boolean; botId?: string; secret?: string; toChatIds?: string[]; interactive?: boolean; wsUrl?: string; sessionFile?: string }
     wechat?: { enabled?: boolean; toUserIds?: string[]; interactive?: boolean; sessionFile?: string; channelVersion?: string }
     telegram?: { enabled?: boolean; botToken?: string; chatId?: string; parseMode?: 'HTML' | 'MarkdownV2' | 'text'; disableNotification?: boolean; timeout?: number; interactive?: boolean }
   }
@@ -49,6 +52,19 @@ export interface WeChatStatus {
   qrContent?: string
   error?: string
   knownUsers: string[]
+}
+
+/** WeCom AI Bot adapter status (see src/service.ts). */
+export interface WeComAiBotStatus {
+  state: 'disabled' | 'connecting' | 'ready' | 'error'
+  error?: string
+  knownChats: string[]
+  qr: {
+    phase: 'idle' | 'pending' | 'error'
+    /** URL to render as a QR code while phase is 'pending'. */
+    authUrl?: string
+    error?: string
+  }
 }
 
 /** The unary RPC result shape the host connection returns. */

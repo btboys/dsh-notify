@@ -5,9 +5,9 @@
  * one config write on Save, and the host persists them for the next start.
  */
 
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import QRCode from 'qrcode'
-import type { NotifyRpcCall, NotifyRpcConfig, WeChatStatus } from './rpc.ts'
+import type { NotifyRpcCall, NotifyRpcConfig, WeChatStatus, WeComAiBotStatus } from './rpc.ts'
 import { NOTIFY_ENDPOINTS, NOTIFY_RPC_CHANNEL } from './rpc.ts'
 import css from './NotifySettings.module.css'
 
@@ -50,6 +50,7 @@ const DEFAULTS: NotifyRpcConfig = {
     system: { enabled: true, sound: true, soundName: '' },
     webhook: { enabled: false, url: '' },
     wecom: { enabled: false, webhookUrl: '', msgType: 'markdown' },
+    wecomAibot: { enabled: false, botId: '', secret: '', toChatIds: [], interactive: true },
     wechat: { enabled: false, toUserIds: [] },
     telegram: { enabled: false, botToken: '', chatId: '', parseMode: 'HTML' },
   },
@@ -252,6 +253,127 @@ function WeChatPanel(props: {
   )
 }
 
+/**
+ * WeCom AI Bot (智能机器人) association / status panel. The "扫码关联" button
+ * starts the host-side QR flow; while an attempt is pending the panel renders
+ * the QR code (encoded locally from the auth URL) and polls the adapter
+ * status. A successful association fills BotId/Secret into the host config —
+ * the parent merges just those fields without discarding other staged edits.
+ */
+function WeComAiBotPanel(props: {
+  rpcCall: NotifyRpcCall
+  t: (key: string) => string
+  enabled: boolean
+  onAssociated: () => void
+}): JSX.Element | null {
+  const { t } = props
+  const [status, setStatus] = useState<WeComAiBotStatus | null>(null)
+  const [qrUrl, setQrUrl] = useState<string | null>(null)
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
+  const wasPending = useRef(false)
+  const latest = useRef(props)
+  latest.current = props
+
+  useEffect(() => {
+    if (!props.enabled) {
+      setStatus(null)
+      return
+    }
+    let cancelled = false
+    const refresh = async (): Promise<void> => {
+      const res = await latest.current.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.wecomAibotStatus, {})
+      if (cancelled || !res.ok || !res.value || typeof res.value !== 'object') return
+      const next = res.value as WeComAiBotStatus
+      // pending → idle without an error means the scan succeeded and the host
+      // has already applied the credentials; merge them into the page config.
+      if (wasPending.current && next.qr.phase === 'idle') {
+        latest.current.onAssociated()
+      }
+      wasPending.current = next.qr.phase === 'pending'
+      setStatus(next)
+    }
+    void refresh()
+    const timer = setInterval(() => { void refresh() }, 3000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [props.enabled])
+
+  // Encode the QR payload locally (never sent to a third-party QR service).
+  const authUrl = status?.qr.phase === 'pending' ? status.qr.authUrl : undefined
+  useEffect(() => {
+    let cancelled = false
+    if (!authUrl) {
+      setQrUrl(null)
+      return
+    }
+    QRCode.toDataURL(authUrl, { width: 220, margin: 1 })
+      .then((url) => { if (!cancelled) setQrUrl(url) })
+      .catch(() => { if (!cancelled) setQrUrl(null) })
+    return () => { cancelled = true }
+  }, [authUrl])
+
+  const startQr = async (): Promise<void> => {
+    setStarting(true)
+    setStartError(null)
+    try {
+      const res = await props.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.wecomAibotQrStart, {})
+      if (!res.ok) throw new Error(res.error?.message ?? 'QR start failed')
+      const authUrl = (res.value as { authUrl?: unknown } | undefined)?.authUrl
+      if (typeof authUrl !== 'string' || !authUrl) throw new Error('QR URL not available')
+      wasPending.current = true
+      setStatus((s) => ({
+        state: s?.state ?? 'disabled',
+        knownChats: s?.knownChats ?? [],
+        qr: { phase: 'pending', authUrl },
+      }))
+    } catch (error) {
+      setStartError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  if (!props.enabled) return null
+
+  return (
+    <div className={css.field}>
+      {status?.state === 'ready' ? (
+        <p className={css.hint}>
+          {t('wecomAibotStatusReady')}
+          {' · '}{t('wecomAibotKnownChats')}: {status.knownChats.length}
+        </p>
+      ) : null}
+      {status?.state === 'ready' && status.knownChats.length === 0 ? (
+        <p className={css.hint}>{t('wecomAibotNoChats')}</p>
+      ) : null}
+      {status?.state === 'connecting' ? (
+        <p className={css.hint}>{t('wecomAibotStatusConnecting')}</p>
+      ) : null}
+      {status?.state === 'error' ? (
+        <p className={css.failed} role="alert">{t('wecomAibotStatusError')}: {status.error ?? ''}</p>
+      ) : null}
+      {status?.qr.phase === 'pending' ? (
+        <div className={css.qrBox}>
+          {qrUrl ? <img className={css.qrImg} src={qrUrl} alt={t('wecomAibotScanHint')} /> : <p className={css.hint}>{t('wecomAibotQrLoading')}</p>}
+          <p className={css.hint}>{t('wecomAibotScanHint')}</p>
+        </div>
+      ) : null}
+      {startError ? <p className={css.failed} role="alert">{startError}</p> : null}
+      {status?.qr.phase === 'error' ? (
+        <p className={css.failed} role="alert">{status.qr.error ?? ''}</p>
+      ) : null}
+      <div>
+        <button type="button" className={css.discard} disabled={starting} onClick={() => void startQr()}>
+          {starting ? t('wecomAibotQrStarting') : t('wecomAibotQrStart')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** The full notify configuration page. */
 export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
   const { t } = props
@@ -262,6 +384,27 @@ export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const dirty = useMemo(() => JSON.stringify(config) !== JSON.stringify(draft), [config, draft])
+
+  const refreshAssociation = async (): Promise<void> => {
+    const res = await props.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.configGet, {})
+    if (!res.ok || !res.value || typeof res.value !== 'object') return
+    const bot = (res.value as NotifyRpcConfig).channels?.wecomAibot
+    if (!bot) return
+    const merge = (current: NotifyRpcConfig): NotifyRpcConfig => ({
+      ...current,
+      channels: {
+        ...current.channels,
+        wecomAibot: {
+          ...current.channels?.wecomAibot,
+          enabled: bot.enabled,
+          botId: bot.botId,
+          secret: bot.secret,
+        },
+      },
+    })
+    setConfig(merge)
+    setDraft(merge)
+  }
 
   const fetchConfig = async (): Promise<void> => {
     const res = await props.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.configGet, {})
@@ -320,6 +463,7 @@ export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
   const sysOn = cd('channels.system.enabled', true)
   const webhookOn = cd('channels.webhook.enabled', false)
   const wecomOn = cd('channels.wecom.enabled', false)
+  const aibotOn = cd('channels.wecomAibot.enabled', false)
   const wechatOn = cd('channels.wechat.enabled', false)
   const telegramOn = cd('channels.telegram.enabled', false)
 
@@ -361,6 +505,25 @@ export function NotifySettings(props: NotifySettingsProps): JSX.Element | null {
           onChange={(v) => setField('channels.wecom.webhookUrl', v)} />
         <SelectRow t={t} labelKey="wecomMsgType" options={['markdown', 'text']} value={cs('channels.wecom.msgType', 'markdown')}
           disabled={!enabled() || !wecomOn} onChange={(v) => setField('channels.wecom.msgType', v)} />
+      </section>
+
+      <section className={css.section} aria-label={t('channelsWecomAibot')}>
+        <h3 className={css.sectionTitle}>{t('channelsWecomAibot')}</h3>
+        <ToggleRow t={t} labelKey="wecomAibotEnabled" hintKey="wecomAibotEnabledHint" checked={aibotOn}
+          disabled={!enabled()} onChange={(v) => setField('channels.wecomAibot.enabled', v)} />
+        <TextRow t={t} labelKey="wecomAibotBotId" hintKey="wecomAibotBotIdHint" placeholder="aib…"
+          value={cs('channels.wecomAibot.botId')} disabled={!enabled()}
+          onChange={(v) => setField('channels.wecomAibot.botId', v)} />
+        <TextRow t={t} labelKey="wecomAibotSecret" hintKey="wecomAibotSecretHint" placeholder="…"
+          value={cs('channels.wecomAibot.secret')} disabled={!enabled()}
+          onChange={(v) => setField('channels.wecomAibot.secret', v)} />
+        <TextRow t={t} labelKey="wecomAibotChatIds" hintKey="wecomAibotChatIdsHint" placeholder="zhangsan, wrk…"
+          value={(() => { const v = c('channels.wecomAibot.toChatIds'); return Array.isArray(v) ? v.join(', ') : '' })()}
+          disabled={!enabled() || !aibotOn}
+          onChange={(v) => setField('channels.wecomAibot.toChatIds', v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))} />
+        <ToggleRow t={t} labelKey="wecomAibotInteractive" hintKey="wecomAibotInteractiveHint" checked={cd('channels.wecomAibot.interactive', true)}
+          disabled={!enabled() || !aibotOn} onChange={(v) => setField('channels.wecomAibot.interactive', v)} />
+        <WeComAiBotPanel rpcCall={props.rpcCall} t={t} enabled={enabled()} onAssociated={() => void refreshAssociation()} />
       </section>
 
       <section className={css.section} aria-label={t('channelsWechat')}>

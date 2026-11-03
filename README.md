@@ -13,6 +13,7 @@ DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在**对话完�
 - 🖥️ **系统通知** - 桌面原生通知（macOS / Windows / Linux），支持自定义提示音（macOS 声音名 / 自定义音频文件 / 按事件类型区分）
 - 🔗 **Webhook 通知** - 自定义 HTTP webhook，支持任意 endpoint
 - 💼 **企业微信机器人** - 企业微信群机器人通知，支持 markdown 格式
+- 🤖 **企业微信智能机器人** - 智能机器人（WebSocket 长连接）markdown 通知 + 按钮卡片双向交互（批准授权 / 回答问题 / 续接对话）；设置页扫码即可关联，自动填入 BotId/Secret
 - 💬 **微信 ClawBot** - 通过腾讯官方 iLink 协议推送到**个人微信**，扫码登录即可用；支持双向交互（微信里直接批准授权 / 回答问题 / 续接对话）
 - ✈️ **Telegram 机器人** - Telegram Bot API 通知，支持 HTML / MarkdownV2 富文本；支持双向交互（内联按钮批准授权 / 回答问题 / 续接对话）
 - 📝 **精简内容** - 通知正文只含用户问题与助手回复摘要（保留段落、不含 thinking 内部推理）；工具/轮次/耗时等结构化数据保留在 metadata
@@ -161,6 +162,15 @@ channels:
       # - user_id_1
       # - user_id_2
 
+  # 企业微信智能机器人（WebSocket 长连接，支持双向交互）
+  wecomAibot:
+    enabled: false
+    botId: ''                # 智能机器人 BotId（推荐用设置页「扫码关联」自动填入）
+    secret: ''               # 智能机器人 Secret（同上）
+    toChatIds: []            # 可选：限定推送目标会话（单聊为 userid，群聊为 chatid）；留空推送给所有给机器人发过消息的会话
+    interactive: true        # 可选：双向交互（默认 true）——企业微信里回复即可批准授权/回答问题/续接会话
+    # sessionFile: /path/to/wecom-aibot-session.json  # 可选：会话文件路径（默认 <DSH_HOME>/notify/wecom-aibot-session.json）
+
   # 微信 ClawBot（个人微信，腾讯 iLink 官方通道）
   wechat:
     enabled: false
@@ -204,6 +214,12 @@ titlePrefix: ''
 | `channels.wecom.enabled` | boolean | `false` | 启用企业微信通知 |
 | `channels.wecom.webhookUrl` | string | `''` | 企业微信 webhook URL（必需） |
 | `channels.wecom.msgType` | string | `'markdown'` | 消息类型：`markdown` 或 `text` |
+| `channels.wecomAibot.enabled` | boolean | `false` | 启用企业微信智能机器人通知 |
+| `channels.wecomAibot.botId` | string | `''` | 智能机器人 BotId（必需，扫码关联自动填入） |
+| `channels.wecomAibot.secret` | string | `''` | 智能机器人 Secret（必需，扫码关联自动填入） |
+| `channels.wecomAibot.toChatIds` | string[] | `[]` | 限定推送目标会话；留空推送给所有给机器人发过消息的会话 |
+| `channels.wecomAibot.interactive` | boolean | `true` | 双向交互：企业微信回复可批准授权 / 回答问题 / 续接会话 |
+| `channels.wecomAibot.sessionFile` | string | `''` | 会话文件路径（默认 `<DSH_HOME>/notify/wecom-aibot-session.json`） |
 | `channels.wechat.enabled` | boolean | `false` | 启用微信 ClawBot（个人微信）通知 |
 | `channels.wechat.toUserIds` | string[] | `[]` | 限定推送目标；留空推送给所有给 Bot 发过消息的用户 |
 | `channels.wechat.interactive` | boolean | `true` | 双向交互：微信回复可批准授权 / 回答问题 / 续接会话 |
@@ -311,6 +327,15 @@ export default function myPlugin(ctx: Context) {
 💬 帮我读一下当前目录，看看项目结构
 🤖 目录里有 src、lib、test 等目录…
 ```
+
+## 🤖 企业微信智能机器人设置
+
+智能机器人走 **WebSocket 长连接**（官方 `@wecom/aibot-node-sdk`），无需公网回调地址，支持主动推送与双向交互。通知以**主动 markdown 消息**推送（与群机器人同一渲染；企微要求主动推送的 text_notice 卡片必须带 `card_action` 跳转目标，否则返回 42045，通知没有可跳转的语义，故不用卡片）；授权审批发「✅ 批准 / ❌ 拒绝」**按钮卡片**；单选提问（不超过 6 项）发**完整文本消息**（编号选项，回复序号即可）——企微卡片正文会被截断、按钮文字也会被压缩，长内容只能走文本；多选、多问题批次及更多选项暂用文本作答，待官方选择提交回调协议或真机样本确认后再启用原生选择卡。也可回复 Y/N / 选项序号 / 自由文字续接会话，与 Web 端先到先得。/sessions、/workspace 菜单在 6 项以内同样发按钮卡片，超出则回退为编号文本。
+
+1. 设置页「企业微信智能机器人」板块点击 **扫码关联**，用企业微信扫码并选择要关联的机器人，BotId/Secret 自动填入并保存
+   （或手动：企业微信管理后台创建智能机器人，复制 BotId/Secret 填入）
+2. 在企业微信里给机器人发一条消息，该会话即进入可推送列表（会话 ID 持久化到 `<DSH_HOME>/notify/wecom-aibot-session.json`，重启后仍可推送）
+3. 可选：配置 `toChatIds` 限定推送目标，同时作为交互白名单
 
 ## 💬 微信 ClawBot 设置（个人微信）
 
@@ -439,7 +464,7 @@ Webhook 会收到以下 JSON payload：
 
 ## 🖥️ 在 Web 配置通知（设置 → 通知）
 
-`dsh-notify-plugin` 会在 DSH Web 的 **设置** 侧边栏注册一个与「通用设置」「模型」「插件」同级的一级入口 **「通知」**（与 dsh-pocket 的「手机访问」同款入口形态），在那里可配置启用开关、系统 / Webhook / 企业微信 / 微信 (ClawBot) / Telegram 渠道、触发事件与标题前缀。微信板块内置扫码登录面板（本地渲染二维码，不经过第三方服务）与登录状态展示。
+`dsh-notify-plugin` 会在 DSH Web 的 **设置** 侧边栏注册一个与「通用设置」「模型」「插件」同级的一级入口 **「通知」**（与 dsh-pocket 的「手机访问」同款入口形态），在那里可配置启用开关、系统 / Webhook / 企业微信 / 企业微信智能机器人 / 微信 (ClawBot) / Telegram 渠道、触发事件与标题前缀。微信板块内置扫码登录面板（本地渲染二维码，不经过第三方服务）与登录状态展示；企业微信智能机器人板块内置「扫码关联」面板，扫码后自动填入 BotId/Secret 并显示连接状态。
 
 配置页的读写走 **已鉴权的 `/dsh-notify` 通道**：
 

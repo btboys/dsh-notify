@@ -4,6 +4,8 @@ import { NotificationAdapter } from './adapters/base.js'
 import { SystemNotificationAdapter } from './adapters/system.js'
 import { WebhookNotificationAdapter } from './adapters/webhook.js'
 import { WeComNotificationAdapter } from './adapters/wecom.js'
+import { WeComAiBotAdapter, WeComAiBotState } from './adapters/wecom-aibot.js'
+import { QR_LOGIN_TIMEOUT_MS, QR_POLL_INTERVAL_MS, generateQrCode, queryQrResult } from './adapters/wecom-aibot-qr.js'
 import { WeChatClawBotAdapter, WeChatAdapterStatus } from './adapters/wechat.js'
 import { InteractionBridge } from './interaction.js'
 import { DshInteractionHost } from './host-interaction.js'
@@ -28,6 +30,7 @@ const DEFAULT_CONFIG: Required<NotifyPluginConfig> = {
     system: { enabled: true, sound: true, icon: undefined },
     webhook: { enabled: false, url: '', method: 'POST', timeout: 5000, headers: {} },
     wecom: { enabled: false, webhookUrl: '', mentions: [], msgType: 'markdown' },
+    wecomAibot: { enabled: false, botId: '', secret: '', toChatIds: [], interactive: true },
     wechat: { enabled: false, toUserIds: [], interactive: true, sessionFile: '', channelVersion: '1.0.2' },
     telegram: { enabled: false, botToken: '', chatId: '', parseMode: 'HTML', disableNotification: false, timeout: 5000, interactive: true },
   },
@@ -48,9 +51,37 @@ const DEFAULT_CONFIG: Required<NotifyPluginConfig> = {
   mainAgentOnly: true,
 }
 
+/** Status of the WeCom AI Bot channel surfaced to the settings page (RPC). */
+export interface WeComAiBotStatus {
+  /** Adapter lifecycle; 'disabled' when the channel is off or unconfigured. */
+  state: WeComAiBotState
+  /** Last adapter error (e.g. invalid credentials). */
+  error?: string
+  /** Chats the bot can push to (learned from inbound messages). */
+  knownChats: string[]
+  /** QR-association attempt state ('idle' when no attempt is running). */
+  qr: {
+    phase: 'idle' | 'pending' | 'error'
+    /** URL to render as a QR code while phase is 'pending'. */
+    authUrl?: string
+    error?: string
+  }
+}
+
+/** One in-flight QR-association attempt (waiting for the user to scan). */
+interface QrAssociation {
+  scode: string
+  authUrl: string
+  deadline: number
+  controller: AbortController
+  timer?: ReturnType<typeof setTimeout>
+  deadlineTimer?: ReturnType<typeof setTimeout>
+  polling: boolean
+}
+
 /**
  * Main notification service for DSH
- * 
+ *
  * Manages multiple notification adapters and dispatches events to enabled channels.
  */
 export class NotifyService extends Service {
@@ -60,6 +91,16 @@ export class NotifyService extends Service {
   private listenersRegistered = false
   /** Chat two-way interaction bridge; null until attachHost() runs. */
   private bridge: InteractionBridge | null = null
+  /** In-flight WeCom AI Bot QR-association attempt, if any. */
+  private qrAssociation: QrAssociation | null = null
+  /** Last QR-association error, surfaced until the next attempt. */
+  private qrError: string | undefined
+  private qrDisposed = false
+  /**
+   * Called after the service changed its own config (QR association filled
+   * in botId/secret) so the host can persist it. Set by the plugin entry.
+   */
+  onConfigChanged: (() => void | Promise<void>) | undefined
   /**
    * Last pushed TODO-list signature per session, for dedupe. todo_write fires
    * on every task status flip; we only push when the PROGRESS actually moves
@@ -104,46 +145,75 @@ export class NotifyService extends Service {
         await Promise.all([
           this.getWechatAdapter()?.pushText(text),
           this.getTelegramAdapter()?.pushText(text),
+          this.getWecomAibotAdapter()?.pushText(text),
         ])
       },
-      // Approval/question prompts: Telegram gets inline-keyboard buttons,
-      // WeChat gets the plain-text rendering; both happen here so the
-      // bridge's text fallback (pushText) is not needed when any channel
-      // was served.
+      // Approval/question prompts: Telegram and WeCom AiBot get button
+      // cards, WeChat gets the plain-text rendering; a button channel that
+      // cannot button-ize a prompt falls back to the text rendering. All
+      // happen here so the bridge's pushText fallback is not needed when any
+      // channel was served.
       sendPrompt: async (entry) => {
         let claimed = false
         const tg = this.getTelegramAdapter()
         if (tg?.isInteractive()) {
           claimed = (await tg.sendPrompt(entry)) || claimed
         }
+        const aibot = this.getWecomAibotAdapter()
+        let aibotServed = false
+        if (aibot && this.wecomAibotInteractiveEnabled()) {
+          aibotServed = await aibot.sendPrompt(entry)
+          claimed = aibotServed || claimed
+        }
         const wx = this.getWechatAdapter()
+        const text = entry.kind === 'approval'
+          ? bridge.formatApprovalPush(entry)
+          : bridge.formatQuestionPush(entry)
         if (wx) {
-          const text = entry.kind === 'approval'
-            ? bridge.formatApprovalPush(entry)
-            : bridge.formatQuestionPush(entry)
           await wx.pushText(text)
+          claimed = true
+        }
+        if (aibot && !aibotServed) {
+          await aibot.pushText(text)
           claimed = true
         }
         return claimed
       },
-      // Selection menus (/sessions, /workspace): Telegram gets inline-keyboard
-      // buttons, WeChat gets the numbered text (its users reply /sel …).
+      // Selection menus (/sessions, /workspace): Telegram and WeCom AiBot get
+      // button cards (AiBot falls back to text for menus over 6 entries),
+      // WeChat gets the numbered text (its users reply /sel …).
       sendMenu: async (menu) => {
         let claimed = false
         const tg = this.getTelegramAdapter()
         if (tg?.isInteractive()) {
           claimed = (await tg.sendMenu(menu)) || claimed
         }
+        const aibot = this.getWecomAibotAdapter()
+        let aibotServed = false
+        if (aibot && this.wecomAibotInteractiveEnabled()) {
+          aibotServed = await aibot.sendMenu(menu)
+          claimed = aibotServed || claimed
+        }
         const wx = this.getWechatAdapter()
         if (wx) {
           await wx.pushText(menu.text)
           claimed = true
         }
+        if (aibot && !aibotServed) {
+          await aibot.pushText(menu.text)
+          claimed = true
+        }
         return claimed
       },
-      canInteract: (userId) =>
-        (this.getWechatAdapter()?.canInteract(userId) ?? false)
-        || (this.getTelegramAdapter()?.canInteract(userId) ?? false),
+      canInteract: (userId) => {
+        const separator = userId.indexOf(':')
+        const channel = userId.slice(0, separator)
+        const id = userId.slice(separator + 1)
+        if (channel === 'wechat') return this.wechatInteractiveEnabled() && (this.getWechatAdapter()?.canInteract(id) ?? false)
+        if (channel === 'telegram') return this.telegramInteractiveEnabled() && (this.getTelegramAdapter()?.canInteract(id) ?? false)
+        if (channel === 'aibot') return this.wecomAibotInteractiveEnabled() && (this.getWecomAibotAdapter()?.canInteract(id) ?? false)
+        return false
+      },
     })
     this.bridge = bridge
     this.syncInteraction()
@@ -163,7 +233,14 @@ export class NotifyService extends Service {
       (a): a is TelegramNotificationAdapter => a.name === 'telegram' && a instanceof TelegramNotificationAdapter,
     )
   }
-  
+
+  /** The current WeCom AI Bot adapter, if the channel is initialized. */
+  private getWecomAibotAdapter(): WeComAiBotAdapter | undefined {
+    return this.adapters.find(
+      (a): a is WeComAiBotAdapter => a.name === 'wecom-aibot' && a instanceof WeComAiBotAdapter,
+    )
+  }
+
   /** Whether the WeChat channel is configured for two-way interaction. */
   private wechatInteractiveEnabled(): boolean {
     return this.config.enabled
@@ -178,10 +255,18 @@ export class NotifyService extends Service {
       && this.config.channels.telegram?.interactive !== false
   }
 
+  /** Whether the WeCom AI Bot channel is configured for two-way interaction. */
+  private wecomAibotInteractiveEnabled(): boolean {
+    return this.config.enabled
+      && this.config.channels.wecomAibot?.enabled === true
+      && this.config.channels.wecomAibot?.interactive !== false
+  }
+
   /** Whether an adapter participates in interaction (its plain push of an answerable event would duplicate the bridge's prompt). */
   private isInteractiveAdapter(adapter: NotificationAdapter): boolean {
     if (adapter.name === 'wechat') return this.wechatInteractiveEnabled()
     if (adapter.name === 'telegram') return this.telegramInteractiveEnabled()
+    if (adapter.name === 'wecom-aibot') return this.wecomAibotInteractiveEnabled()
     return false
   }
   
@@ -193,22 +278,32 @@ export class NotifyService extends Service {
   private syncInteraction(): void {
     const wechat = this.getWechatAdapter()
     const telegram = this.getTelegramAdapter()
+    const aibot = this.getWecomAibotAdapter()
     const wechatInteractive = this.wechatInteractiveEnabled()
     const telegramInteractive = this.telegramInteractiveEnabled()
-    
+    const aibotInteractive = this.wecomAibotInteractiveEnabled()
+
     if (wechat) {
       wechat.onUserMessage = wechatInteractive && this.bridge
-        ? (userId, text) => { void this.bridge!.handleReply(userId, text) }
+        ? (userId, text) => this.bridge!.handleReply(`wechat:${userId}`, text)
         : undefined
     }
     if (telegram) {
       telegram.onUserMessage = telegramInteractive && this.bridge
-        ? (userId, text) => { void this.bridge!.handleReply(userId, text) }
+        ? (userId, text) => this.bridge!.handleReply(`telegram:${userId}`, text)
         : undefined
     }
-    
+    if (aibot) {
+      aibot.onUserMessage = aibotInteractive && this.bridge
+        ? (chatId, text) => this.bridge!.handleReply(`aibot:${chatId}`, text)
+        : undefined
+      aibot.onPromptReply = aibotInteractive && this.bridge
+        ? (chatId, text, entry) => this.bridge!.handlePromptReply(`aibot:${chatId}`, text, entry)
+        : undefined
+    }
+
     if (this.bridge) {
-      const anyInteractive = (wechatInteractive && wechat) || (telegramInteractive && telegram)
+      const anyInteractive = (wechatInteractive && wechat) || (telegramInteractive && telegram) || (aibotInteractive && aibot)
       if (anyInteractive) {
         this.bridge.start()
       } else {
@@ -267,16 +362,24 @@ export class NotifyService extends Service {
     const results = await Promise.allSettled(
       this.adapters.map((adapter) => {
         if (!adapter.enabled) {
+          this.ctx.logger.debug('[notify] Skipping disabled adapter %s for %s', adapter.name, event.type)
           return Promise.resolve()
         }
         if (bridgedEvent && this.isInteractiveAdapter(adapter)) {
           this.ctx.logger.debug('[notify] Skipping plain %s push to %s (interaction bridge owns it)', event.type, adapter.name)
           return Promise.resolve()
         }
-        this.ctx.logger.info('[notify] Sending via %s adapter', adapter.name)
-        return adapter.send(event)
+        this.ctx.logger.info('[notify] Sending %s via %s adapter', event.type, adapter.name)
+        return adapter.send(event).then(() => {
+          this.ctx.logger.info('[notify] Sent %s via %s adapter', event.type, adapter.name)
+        })
       })
     )
+    if (this.adapters.length === 0) {
+      this.ctx.logger.warn('[notify] No notification adapters available for %s', event.type)
+    } else if (!this.adapters.some((adapter) => adapter.enabled)) {
+      this.ctx.logger.warn('[notify] No enabled notification adapters available for %s', event.type)
+    }
     
     // Log any failures
     results.forEach((result, index) => {
@@ -391,7 +494,115 @@ export class NotifyService extends Service {
     await adapter.relogin()
     return adapter.getStatus()
   }
-  
+
+  /**
+   * Status of the WeCom AI Bot channel for the settings page: adapter state,
+   * reachable chats, and the in-flight QR-association attempt.
+   */
+  getWecomAibotStatus(): WeComAiBotStatus {
+    const adapter = this.getWecomAibotAdapter()
+    return {
+      state: adapter?.getStatus().state ?? 'disabled',
+      error: adapter?.getStatus().error,
+      knownChats: adapter?.getStatus().knownChats ?? [],
+      qr: this.qrAssociation
+        ? { phase: 'pending', authUrl: this.qrAssociation.authUrl }
+        : this.qrError
+          ? { phase: 'error', error: this.qrError }
+          : { phase: 'idle' },
+    }
+  }
+
+  /**
+   * Start (or restart) a WeCom AI Bot QR association: fetch a QR payload,
+   * then poll in the background until the user scans and confirms in 企业微信.
+   * On success the issued BotId/Secret are written into the live config (the
+   * channel is enabled), adapters rebuild, and `onConfigChanged` fires so the
+   * host persists the credentials. Returns the QR payload to render.
+   */
+  async startWecomAibotQr(): Promise<{ authUrl: string }> {
+    if (this.qrDisposed) throw new Error('Notification service is disposed')
+    this.stopQrAssociation()
+    this.qrError = undefined
+    const association: QrAssociation = {
+      scode: '', authUrl: '', deadline: 0,
+      controller: new AbortController(), polling: false,
+    }
+    this.qrAssociation = association
+    try {
+      const { scode, authUrl } = await generateQrCode('dsh-notify', undefined, association.controller.signal)
+      if (this.qrAssociation !== association) throw new Error('QR association cancelled')
+      association.scode = scode
+      association.authUrl = authUrl
+      association.deadline = Date.now() + QR_LOGIN_TIMEOUT_MS
+      association.deadlineTimer = setTimeout(() => {
+        if (this.qrAssociation !== association) return
+        this.qrError = '扫码关联超时（5 分钟内未扫码确认），请重试'
+        this.stopQrAssociation()
+      }, QR_LOGIN_TIMEOUT_MS)
+      association.timer = setTimeout(() => {
+          if (this.qrAssociation === association) void this.pollQrAssociation()
+        }, QR_POLL_INTERVAL_MS)
+      this.ctx.logger.info('[notify] WeCom AiBot 扫码关联：请用企业微信扫描二维码（二维码内容已推送到设置页）')
+      return { authUrl }
+    } catch (error) {
+      if (this.qrAssociation === association) {
+        this.qrError = error instanceof Error ? error.message : String(error)
+        this.stopQrAssociation()
+      }
+      throw error
+    }
+  }
+
+  /** One poll tick; schedule the next only after this request settles. */
+  private async pollQrAssociation(): Promise<void> {
+    const association = this.qrAssociation
+    if (!association || !association.scode || association.polling) return
+    clearTimeout(association.timer)
+    association.timer = undefined
+    association.polling = true
+    try {
+      const result = await queryQrResult(association.scode, undefined, association.controller.signal)
+      if (this.qrAssociation !== association) return
+      if (Date.now() >= association.deadline) {
+        throw new Error('扫码关联超时（5 分钟内未扫码确认），请重试')
+      }
+      if (result.status === 'pending') {
+        association.timer = setTimeout(() => {
+          if (this.qrAssociation === association) void this.pollQrAssociation()
+        }, QR_POLL_INTERVAL_MS)
+        return
+      }
+      if (result.status === 'expired') throw new Error('二维码已过期，请重新发起扫码关联')
+
+      clearTimeout(association.deadlineTimer)
+      association.deadlineTimer = undefined
+      this.ctx.logger.info('[notify] WeCom AiBot 扫码关联成功 (botId: %s)', result.botId)
+      this.updateConfig({
+        channels: { wecomAibot: { enabled: true, botId: result.botId, secret: result.secret } },
+      })
+      await this.onConfigChanged?.()
+      if (this.qrAssociation === association) this.stopQrAssociation()
+    } catch (error) {
+      if (this.qrAssociation !== association) return
+      this.qrError = error instanceof Error ? error.message : String(error)
+      this.ctx.logger.error('[notify] WeCom AiBot QR association failed:', error)
+      this.stopQrAssociation()
+    } finally {
+      association.polling = false
+    }
+  }
+
+  /** Cancel generation, polling, and both scheduled timers together. */
+  private stopQrAssociation(): void {
+    const association = this.qrAssociation
+    this.qrAssociation = null
+    if (!association) return
+    clearTimeout(association.timer)
+    clearTimeout(association.deadlineTimer)
+    association.controller.abort()
+  }
+
   /**
    * Update configuration at runtime.
    *
@@ -435,6 +646,7 @@ export class NotifyService extends Service {
         system: { ...base.channels.system, ...(patchChannels.system as object | undefined) },
         webhook: { ...base.channels.webhook, ...(patchChannels.webhook as object | undefined) },
         wecom: { ...base.channels.wecom, ...(patchChannels.wecom as object | undefined) },
+        wecomAibot: { ...base.channels.wecomAibot, ...(patchChannels.wecomAibot as object | undefined) },
         wechat: { ...base.channels.wechat, ...(patchChannels.wechat as object | undefined) },
         telegram: { ...base.channels.telegram, ...(patchChannels.telegram as object | undefined) },
       } as NotifyPluginConfig['channels'],
@@ -476,7 +688,9 @@ export class NotifyService extends Service {
    */
   async dispose(): Promise<void> {
     this.ctx.logger.info('[notify] Disposing notification service')
-    
+
+    this.qrDisposed = true
+    this.stopQrAssociation()
     this.bridge?.dispose()
     this.teardownAdapters()
   }
@@ -510,6 +724,15 @@ export class NotifyService extends Service {
           webhookUrl: (userChannels.wecom as any)?.webhookUrl ?? defChannels.wecom!.webhookUrl,
           mentions: (userChannels.wecom as any)?.mentions ?? defChannels.wecom!.mentions,
           msgType: (userChannels.wecom as any)?.msgType ?? defChannels.wecom!.msgType,
+        },
+        wecomAibot: {
+          enabled: (userChannels.wecomAibot as any)?.enabled ?? defChannels.wecomAibot!.enabled,
+          botId: (userChannels.wecomAibot as any)?.botId ?? defChannels.wecomAibot!.botId,
+          secret: (userChannels.wecomAibot as any)?.secret ?? defChannels.wecomAibot!.secret,
+          toChatIds: (userChannels.wecomAibot as any)?.toChatIds ?? defChannels.wecomAibot!.toChatIds,
+          interactive: (userChannels.wecomAibot as any)?.interactive ?? defChannels.wecomAibot!.interactive,
+          wsUrl: (userChannels.wecomAibot as any)?.wsUrl ?? defChannels.wecomAibot!.wsUrl,
+          sessionFile: (userChannels.wecomAibot as any)?.sessionFile ?? defChannels.wecomAibot!.sessionFile,
         },
         telegram: {
           enabled: (userChannels.telegram as any)?.enabled ?? defChannels.telegram!.enabled,
@@ -576,6 +799,19 @@ export class NotifyService extends Service {
       }
     }
     
+    // WeCom AI Bot (智能机器人) notification adapter. Initialized whenever
+    // enabled with credentials: the WebSocket connect runs async and reports
+    // through getWecomAibotStatus().
+    if (channels.wecomAibot?.enabled && channels.wecomAibot.botId && channels.wecomAibot.secret) {
+      try {
+        const adapter = new WeComAiBotAdapter(this.ctx, channels.wecomAibot)
+        this.adapters.push(adapter)
+        this.ctx.logger.info('[notify] WeCom AiBot notification adapter initialized')
+      } catch (error) {
+        this.ctx.logger.warn('[notify] Failed to initialize WeCom AiBot adapter:', error)
+      }
+    }
+
     // WeChat (ClawBot / iLink) notification adapter. Initialized whenever
     // enabled: a missing session is normal — the adapter runs the QR login
     // flow and reports progress through getWechatStatus().
@@ -707,6 +943,7 @@ export class NotifyService extends Service {
         
         if (reason === 'completed' || reason === 'max-tokens') {
           debug('notifying conversation completed')
+          this.ctx.logger.info('[notify] Dispatching conversation completion', { turn, reason, summaryLength: summary.message.length })
           await this.notifyConversationCompleted(
             title('✅', '对话完成'),
             summary.message,

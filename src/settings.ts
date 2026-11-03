@@ -40,6 +40,16 @@ export interface NotifySettings {
   wecomWebhookUrl: string
   /** WeCom message type: markdown or text. */
   wecomMsgType: 'markdown' | 'text'
+  /** Enable WeCom AI Bot (智能机器人) notifications. */
+  wecomAibotEnabled: boolean
+  /** WeCom AI Bot BotId (扫码关联自动填入). */
+  wecomAibotBotId: string
+  /** WeCom AI Bot Secret (扫码关联自动填入). */
+  wecomAibotSecret: string
+  /** Comma-separated chat IDs to push to; empty pushes to every chat that messaged the bot. */
+  wecomAibotChatIds: string
+  /** Two-way interaction: answer approvals/questions and continue conversations from 企业微信. */
+  wecomAibotInteractive: boolean
   /** Enable WeChat ClawBot (personal WeChat) notifications. */
   wechatEnabled: boolean
   /** Comma-separated iLink user IDs to push to; empty pushes to every user who messaged the bot. */
@@ -84,6 +94,11 @@ export const NOTIFY_SETTINGS_SCHEMA: z<NotifySettings> = z.object({
   wecomEnabled: z.boolean().default(false),
   wecomWebhookUrl: z.string().default(''),
   wecomMsgType: z.union([z.const('markdown'), z.const('text')]).default('markdown'),
+  wecomAibotEnabled: z.boolean().default(false),
+  wecomAibotBotId: z.string().default(''),
+  wecomAibotSecret: z.string().default(''),
+  wecomAibotChatIds: z.string().default(''),
+  wecomAibotInteractive: z.boolean().default(true),
   wechatEnabled: z.boolean().default(false),
   wechatUserIds: z.string().default(''),
   wechatInteractive: z.boolean().default(true),
@@ -124,6 +139,16 @@ export function settingsToConfig(settings: NotifySettings): NotifyPluginConfig {
         enabled: settings.wecomEnabled,
         webhookUrl: settings.wecomWebhookUrl,
         msgType: settings.wecomMsgType,
+      },
+      wecomAibot: {
+        enabled: settings.wecomAibotEnabled,
+        botId: settings.wecomAibotBotId,
+        secret: settings.wecomAibotSecret,
+        toChatIds: settings.wecomAibotChatIds
+          .split(/[,\s]+/)
+          .map((id) => id.trim())
+          .filter(Boolean),
+        interactive: settings.wecomAibotInteractive,
       },
       wechat: {
         enabled: settings.wechatEnabled,
@@ -170,6 +195,11 @@ export function configToSettings(config: NotifyPluginConfig): NotifySettings {
     wecomEnabled: config.channels?.wecom?.enabled ?? false,
     wecomWebhookUrl: config.channels?.wecom?.webhookUrl ?? '',
     wecomMsgType: config.channels?.wecom?.msgType ?? 'markdown',
+    wecomAibotEnabled: config.channels?.wecomAibot?.enabled ?? false,
+    wecomAibotBotId: config.channels?.wecomAibot?.botId ?? '',
+    wecomAibotSecret: config.channels?.wecomAibot?.secret ?? '',
+    wecomAibotChatIds: (config.channels?.wecomAibot?.toChatIds ?? []).join(', '),
+    wecomAibotInteractive: config.channels?.wecomAibot?.interactive ?? true,
     wechatEnabled: config.channels?.wechat?.enabled ?? false,
     wechatUserIds: (config.channels?.wechat?.toUserIds ?? []).join(', '),
     wechatInteractive: config.channels?.wechat?.interactive ?? true,

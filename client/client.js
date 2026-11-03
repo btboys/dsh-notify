@@ -2447,11 +2447,13 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			configGet: "notify.config.get",
 			configSet: "notify.config.set",
 			wechatStatus: "notify.wechat.status",
-			wechatRelogin: "notify.wechat.relogin"
+			wechatRelogin: "notify.wechat.relogin",
+			wecomAibotStatus: "notify.wecom-aibot.status",
+			wecomAibotQrStart: "notify.wecom-aibot.qr-start"
 		});
 		//#endregion
 		//#region \0dsh-css:src/client/NotifySettings.module.css.mjs
-		const css = ".fetK9G_page{flex-direction:column;gap:20px;max-width:640px;padding:8px 4px 32px;font-size:13px;display:flex}.fetK9G_pageHint{opacity:.68;margin:0;font-size:12px;line-height:1.5}.fetK9G_status{opacity:.7;margin:0;font-size:13px}.fetK9G_section{border:1px solid var(--dsw-alias-border-l2,#7f7f7f38);border-radius:12px;flex-direction:column;gap:4px;padding:14px 16px;display:flex}.fetK9G_sectionTitle{text-transform:uppercase;letter-spacing:.04em;opacity:.55;margin:0 0 6px;font-size:12px;font-weight:600}.fetK9G_field{flex-direction:column;gap:6px;padding:6px 0;display:flex}.fetK9G_fieldHead{justify-content:space-between;align-items:center;gap:8px;display:flex}.fetK9G_label{font-size:13px;line-height:1.3}.fetK9G_hint{opacity:.6;margin:0;font-size:11px}.fetK9G_input{box-sizing:border-box;width:100%;font:inherit;color:inherit;background:var(--dsw-alias-bg-layer-2,#7f7f7f0d);border:1px solid var(--dsw-alias-border-l2,#7f7f7f40);border-radius:8px;padding:8px 10px;font-size:13px}.fetK9G_input:focus{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:-1px;border-color:#0000}.fetK9G_input:disabled{opacity:.55}.fetK9G_toggle{flex:none;width:34px;height:20px;position:relative}.fetK9G_toggleInput{z-index:1;opacity:0;cursor:pointer;margin:0;position:absolute;top:0;bottom:0;left:0;right:0}.fetK9G_toggleInput:disabled{cursor:default}.fetK9G_toggleTrack{background:var(--dsw-alias-border-l2,#7f7f7f4d);pointer-events:none;border-radius:999px;transition:background .14s;position:absolute;top:0;bottom:0;left:0;right:0}.fetK9G_toggleInput:checked+.fetK9G_toggleTrack{background:var(--dsw-alias-brand-primary,#4f6ef7)}.fetK9G_toggleThumb{pointer-events:none;background:#fff;border-radius:50%;width:16px;height:16px;transition:transform .14s;position:absolute;top:2px;left:2px;box-shadow:0 1px 2px #0000004d}.fetK9G_toggleInput:checked+.fetK9G_toggleTrack+.fetK9G_toggleThumb{transform:translate(14px)}.fetK9G_toggleInput:disabled+.fetK9G_toggleTrack,.fetK9G_toggleInput:disabled+.fetK9G_toggleTrack+.fetK9G_toggleThumb{opacity:.6}.fetK9G_select{border:1px solid var(--dsw-alias-border-l2,#7f7f7f40);border-radius:8px;width:fit-content;display:inline-flex;overflow:hidden}.fetK9G_selectOption{font:inherit;cursor:pointer;color:inherit;opacity:.7;background:0 0;border:0;padding:6px 12px;font-size:12px}.fetK9G_selectOption+.fetK9G_selectOption{border-left:1px solid var(--dsw-alias-border-l2,#7f7f7f40)}.fetK9G_selectOption[data-active]{background:var(--dsw-alias-brand-primary,#4f6ef7);color:#fff;opacity:1}.fetK9G_selectOption:disabled{opacity:.4;cursor:default}.fetK9G_qrBox{flex-direction:column;align-items:flex-start;gap:8px;padding:10px 0 4px;display:flex}.fetK9G_qrImg{border:1px solid var(--dsw-alias-border-l2,#7f7f7f40);background:#fff;border-radius:8px;width:180px;height:180px;padding:6px}.fetK9G_footer{justify-content:flex-end;align-items:center;gap:10px;margin-top:4px;display:flex}.fetK9G_failed{color:var(--dsw-alias-state-error-primary,#dc2626);margin:0 auto 0 0;font-size:12px}.fetK9G_discard{font:inherit;border:1px solid var(--dsw-alias-border-l2,#7f7f7f4d);cursor:pointer;color:inherit;background:0 0;border-radius:8px;padding:7px 14px;font-size:13px}.fetK9G_discard:hover{background:var(--dsw-alias-bg-layer-2,#7f7f7f14)}.fetK9G_discard:disabled{opacity:.5;cursor:default}.fetK9G_save{font:inherit;background:var(--dsw-alias-brand-primary,#4f6ef7);color:#fff;cursor:pointer;border:0;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:600}.fetK9G_save:hover{filter:brightness(1.06)}.fetK9G_save:disabled{opacity:.5;cursor:default}";
+		const css = ".MGFJ8G_page{flex-direction:column;gap:20px;max-width:640px;padding:8px 4px 32px;font-size:13px;display:flex}.MGFJ8G_pageHint{opacity:.68;margin:0;font-size:12px;line-height:1.5}.MGFJ8G_status{opacity:.7;margin:0;font-size:13px}.MGFJ8G_section{border:1px solid var(--dsw-alias-border-l2,#7f7f7f38);border-radius:12px;flex-direction:column;gap:4px;padding:14px 16px;display:flex}.MGFJ8G_sectionTitle{text-transform:uppercase;letter-spacing:.04em;opacity:.55;margin:0 0 6px;font-size:12px;font-weight:600}.MGFJ8G_field{flex-direction:column;gap:6px;padding:6px 0;display:flex}.MGFJ8G_fieldHead{justify-content:space-between;align-items:center;gap:8px;display:flex}.MGFJ8G_label{font-size:13px;line-height:1.3}.MGFJ8G_hint{opacity:.6;margin:0;font-size:11px}.MGFJ8G_input{box-sizing:border-box;width:100%;font:inherit;color:inherit;background:var(--dsw-alias-bg-layer-2,#7f7f7f0d);border:1px solid var(--dsw-alias-border-l2,#7f7f7f40);border-radius:8px;padding:8px 10px;font-size:13px}.MGFJ8G_input:focus{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:-1px;border-color:#0000}.MGFJ8G_input:disabled{opacity:.55}.MGFJ8G_toggle{flex:none;width:34px;height:20px;position:relative}.MGFJ8G_toggleInput{z-index:1;opacity:0;cursor:pointer;margin:0;position:absolute;top:0;bottom:0;left:0;right:0}.MGFJ8G_toggleInput:disabled{cursor:default}.MGFJ8G_toggleTrack{background:var(--dsw-alias-border-l2,#7f7f7f4d);pointer-events:none;border-radius:999px;transition:background .14s;position:absolute;top:0;bottom:0;left:0;right:0}.MGFJ8G_toggleInput:checked+.MGFJ8G_toggleTrack{background:var(--dsw-alias-brand-primary,#4f6ef7)}.MGFJ8G_toggleThumb{pointer-events:none;background:#fff;border-radius:50%;width:16px;height:16px;transition:transform .14s;position:absolute;top:2px;left:2px;box-shadow:0 1px 2px #0000004d}.MGFJ8G_toggleInput:checked+.MGFJ8G_toggleTrack+.MGFJ8G_toggleThumb{transform:translate(14px)}.MGFJ8G_toggleInput:disabled+.MGFJ8G_toggleTrack,.MGFJ8G_toggleInput:disabled+.MGFJ8G_toggleTrack+.MGFJ8G_toggleThumb{opacity:.6}.MGFJ8G_select{border:1px solid var(--dsw-alias-border-l2,#7f7f7f40);border-radius:8px;width:fit-content;display:inline-flex;overflow:hidden}.MGFJ8G_selectOption{font:inherit;cursor:pointer;color:inherit;opacity:.7;background:0 0;border:0;padding:6px 12px;font-size:12px}.MGFJ8G_selectOption+.MGFJ8G_selectOption{border-left:1px solid var(--dsw-alias-border-l2,#7f7f7f40)}.MGFJ8G_selectOption[data-active]{background:var(--dsw-alias-brand-primary,#4f6ef7);color:#fff;opacity:1}.MGFJ8G_selectOption:disabled{opacity:.4;cursor:default}.MGFJ8G_qrBox{flex-direction:column;align-items:flex-start;gap:8px;padding:10px 0 4px;display:flex}.MGFJ8G_qrImg{border:1px solid var(--dsw-alias-border-l2,#7f7f7f40);background:#fff;border-radius:8px;width:180px;height:180px;padding:6px}.MGFJ8G_footer{justify-content:flex-end;align-items:center;gap:10px;margin-top:4px;display:flex}.MGFJ8G_failed{color:var(--dsw-alias-state-error-primary,#dc2626);margin:0 auto 0 0;font-size:12px}.MGFJ8G_discard{font:inherit;border:1px solid var(--dsw-alias-border-l2,#7f7f7f4d);cursor:pointer;color:inherit;background:0 0;border-radius:8px;padding:7px 14px;font-size:13px}.MGFJ8G_discard:hover{background:var(--dsw-alias-bg-layer-2,#7f7f7f14)}.MGFJ8G_discard:disabled{opacity:.5;cursor:default}.MGFJ8G_save{font:inherit;background:var(--dsw-alias-brand-primary,#4f6ef7);color:#fff;cursor:pointer;border:0;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:600}.MGFJ8G_save:hover{filter:brightness(1.06)}.MGFJ8G_save:disabled{opacity:.5;cursor:default}";
 		const tagId = "dsh-notify-plugin/NotifySettings.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -2461,28 +2463,28 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			document.head.appendChild(tag);
 		}
 		var NotifySettings_module_css_default = {
-			"discard": "fetK9G_discard",
-			"failed": "fetK9G_failed",
-			"field": "fetK9G_field",
-			"fieldHead": "fetK9G_fieldHead",
-			"footer": "fetK9G_footer",
-			"hint": "fetK9G_hint",
-			"input": "fetK9G_input",
-			"label": "fetK9G_label",
-			"page": "fetK9G_page",
-			"pageHint": "fetK9G_pageHint",
-			"qrBox": "fetK9G_qrBox",
-			"qrImg": "fetK9G_qrImg",
-			"save": "fetK9G_save",
-			"section": "fetK9G_section",
-			"sectionTitle": "fetK9G_sectionTitle",
-			"select": "fetK9G_select",
-			"selectOption": "fetK9G_selectOption",
-			"status": "fetK9G_status",
-			"toggle": "fetK9G_toggle",
-			"toggleInput": "fetK9G_toggleInput",
-			"toggleThumb": "fetK9G_toggleThumb",
-			"toggleTrack": "fetK9G_toggleTrack"
+			"discard": "MGFJ8G_discard",
+			"failed": "MGFJ8G_failed",
+			"field": "MGFJ8G_field",
+			"fieldHead": "MGFJ8G_fieldHead",
+			"footer": "MGFJ8G_footer",
+			"hint": "MGFJ8G_hint",
+			"input": "MGFJ8G_input",
+			"label": "MGFJ8G_label",
+			"page": "MGFJ8G_page",
+			"pageHint": "MGFJ8G_pageHint",
+			"qrBox": "MGFJ8G_qrBox",
+			"qrImg": "MGFJ8G_qrImg",
+			"save": "MGFJ8G_save",
+			"section": "MGFJ8G_section",
+			"sectionTitle": "MGFJ8G_sectionTitle",
+			"select": "MGFJ8G_select",
+			"selectOption": "MGFJ8G_selectOption",
+			"status": "MGFJ8G_status",
+			"toggle": "MGFJ8G_toggle",
+			"toggleInput": "MGFJ8G_toggleInput",
+			"toggleThumb": "MGFJ8G_toggleThumb",
+			"toggleTrack": "MGFJ8G_toggleTrack"
 		};
 		//#endregion
 		//#region src/client/NotifySettings.tsx
@@ -2533,6 +2535,13 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 					enabled: false,
 					webhookUrl: "",
 					msgType: "markdown"
+				},
+				wecomAibot: {
+					enabled: false,
+					botId: "",
+					secret: "",
+					toChatIds: [],
+					interactive: true
 				},
 				wechat: {
 					enabled: false,
@@ -2753,6 +2762,152 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 				]
 			});
 		}
+		/**
+		* WeCom AI Bot (智能机器人) association / status panel. The "扫码关联" button
+		* starts the host-side QR flow; while an attempt is pending the panel renders
+		* the QR code (encoded locally from the auth URL) and polls the adapter
+		* status. A successful association fills BotId/Secret into the host config —
+		* the parent merges just those fields without discarding other staged edits.
+		*/
+		function WeComAiBotPanel(props) {
+			const { t } = props;
+			const [status, setStatus] = (0, react.useState)(null);
+			const [qrUrl, setQrUrl] = (0, react.useState)(null);
+			const [starting, setStarting] = (0, react.useState)(false);
+			const [startError, setStartError] = (0, react.useState)(null);
+			const wasPending = (0, react.useRef)(false);
+			const latest = (0, react.useRef)(props);
+			latest.current = props;
+			(0, react.useEffect)(() => {
+				if (!props.enabled) {
+					setStatus(null);
+					return;
+				}
+				let cancelled = false;
+				const refresh = async () => {
+					const res = await latest.current.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.wecomAibotStatus, {});
+					if (cancelled || !res.ok || !res.value || typeof res.value !== "object") return;
+					const next = res.value;
+					if (wasPending.current && next.qr.phase === "idle") latest.current.onAssociated();
+					wasPending.current = next.qr.phase === "pending";
+					setStatus(next);
+				};
+				refresh();
+				const timer = setInterval(() => {
+					refresh();
+				}, 3e3);
+				return () => {
+					cancelled = true;
+					clearInterval(timer);
+				};
+			}, [props.enabled]);
+			const authUrl = status?.qr.phase === "pending" ? status.qr.authUrl : void 0;
+			(0, react.useEffect)(() => {
+				let cancelled = false;
+				if (!authUrl) {
+					setQrUrl(null);
+					return;
+				}
+				import_browser.toDataURL(authUrl, {
+					width: 220,
+					margin: 1
+				}).then((url) => {
+					if (!cancelled) setQrUrl(url);
+				}).catch(() => {
+					if (!cancelled) setQrUrl(null);
+				});
+				return () => {
+					cancelled = true;
+				};
+			}, [authUrl]);
+			const startQr = async () => {
+				setStarting(true);
+				setStartError(null);
+				try {
+					const res = await props.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.wecomAibotQrStart, {});
+					if (!res.ok) throw new Error(res.error?.message ?? "QR start failed");
+					const authUrl = res.value?.authUrl;
+					if (typeof authUrl !== "string" || !authUrl) throw new Error("QR URL not available");
+					wasPending.current = true;
+					setStatus((s) => ({
+						state: s?.state ?? "disabled",
+						knownChats: s?.knownChats ?? [],
+						qr: {
+							phase: "pending",
+							authUrl
+						}
+					}));
+				} catch (error) {
+					setStartError(error instanceof Error ? error.message : String(error));
+				} finally {
+					setStarting(false);
+				}
+			};
+			if (!props.enabled) return null;
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: NotifySettings_module_css_default.field,
+				children: [
+					status?.state === "ready" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("p", {
+						className: NotifySettings_module_css_default.hint,
+						children: [
+							t("wecomAibotStatusReady"),
+							" · ",
+							t("wecomAibotKnownChats"),
+							": ",
+							status.knownChats.length
+						]
+					}) : null,
+					status?.state === "ready" && status.knownChats.length === 0 ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: NotifySettings_module_css_default.hint,
+						children: t("wecomAibotNoChats")
+					}) : null,
+					status?.state === "connecting" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: NotifySettings_module_css_default.hint,
+						children: t("wecomAibotStatusConnecting")
+					}) : null,
+					status?.state === "error" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("p", {
+						className: NotifySettings_module_css_default.failed,
+						role: "alert",
+						children: [
+							t("wecomAibotStatusError"),
+							": ",
+							status.error ?? ""
+						]
+					}) : null,
+					status?.qr.phase === "pending" ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: NotifySettings_module_css_default.qrBox,
+						children: [qrUrl ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("img", {
+							className: NotifySettings_module_css_default.qrImg,
+							src: qrUrl,
+							alt: t("wecomAibotScanHint")
+						}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+							className: NotifySettings_module_css_default.hint,
+							children: t("wecomAibotQrLoading")
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+							className: NotifySettings_module_css_default.hint,
+							children: t("wecomAibotScanHint")
+						})]
+					}) : null,
+					startError ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: NotifySettings_module_css_default.failed,
+						role: "alert",
+						children: startError
+					}) : null,
+					status?.qr.phase === "error" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("p", {
+						className: NotifySettings_module_css_default.failed,
+						role: "alert",
+						children: status.qr.error ?? ""
+					}) : null,
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", { children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						className: NotifySettings_module_css_default.discard,
+						disabled: starting,
+						onClick: () => void startQr(),
+						children: starting ? t("wecomAibotQrStarting") : t("wecomAibotQrStart")
+					}) })
+				]
+			});
+		}
 		/** The full notify configuration page. */
 		function NotifySettings(props) {
 			const { t } = props;
@@ -2762,6 +2917,26 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			const [saving, setSaving] = (0, react.useState)(false);
 			const [saveError, setSaveError] = (0, react.useState)(null);
 			const dirty = (0, react.useMemo)(() => JSON.stringify(config) !== JSON.stringify(draft), [config, draft]);
+			const refreshAssociation = async () => {
+				const res = await props.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.configGet, {});
+				if (!res.ok || !res.value || typeof res.value !== "object") return;
+				const bot = res.value.channels?.wecomAibot;
+				if (!bot) return;
+				const merge = (current) => ({
+					...current,
+					channels: {
+						...current.channels,
+						wecomAibot: {
+							...current.channels?.wecomAibot,
+							enabled: bot.enabled,
+							botId: bot.botId,
+							secret: bot.secret
+						}
+					}
+				});
+				setConfig(merge);
+				setDraft(merge);
+			};
 			const fetchConfig = async () => {
 				const res = await props.rpcCall(NOTIFY_RPC_CHANNEL, NOTIFY_ENDPOINTS.configGet, {});
 				if (res.ok && res.value && typeof res.value === "object") {
@@ -2831,6 +3006,7 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			const sysOn = cd("channels.system.enabled", true);
 			const webhookOn = cd("channels.webhook.enabled", false);
 			const wecomOn = cd("channels.wecom.enabled", false);
+			const aibotOn = cd("channels.wecomAibot.enabled", false);
 			const wechatOn = cd("channels.wechat.enabled", false);
 			const telegramOn = cd("channels.telegram.enabled", false);
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
@@ -2948,6 +3124,68 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 								value: cs("channels.wecom.msgType", "markdown"),
 								disabled: !enabled() || !wecomOn,
 								onChange: (v) => setField("channels.wecom.msgType", v)
+							})
+						]
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
+						className: NotifySettings_module_css_default.section,
+						"aria-label": t("channelsWecomAibot"),
+						children: [
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)("h3", {
+								className: NotifySettings_module_css_default.sectionTitle,
+								children: t("channelsWecomAibot")
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ToggleRow, {
+								t,
+								labelKey: "wecomAibotEnabled",
+								hintKey: "wecomAibotEnabledHint",
+								checked: aibotOn,
+								disabled: !enabled(),
+								onChange: (v) => setField("channels.wecomAibot.enabled", v)
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(TextRow, {
+								t,
+								labelKey: "wecomAibotBotId",
+								hintKey: "wecomAibotBotIdHint",
+								placeholder: "aib…",
+								value: cs("channels.wecomAibot.botId"),
+								disabled: !enabled(),
+								onChange: (v) => setField("channels.wecomAibot.botId", v)
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(TextRow, {
+								t,
+								labelKey: "wecomAibotSecret",
+								hintKey: "wecomAibotSecretHint",
+								placeholder: "…",
+								value: cs("channels.wecomAibot.secret"),
+								disabled: !enabled(),
+								onChange: (v) => setField("channels.wecomAibot.secret", v)
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(TextRow, {
+								t,
+								labelKey: "wecomAibotChatIds",
+								hintKey: "wecomAibotChatIdsHint",
+								placeholder: "zhangsan, wrk…",
+								value: (() => {
+									const v = c("channels.wecomAibot.toChatIds");
+									return Array.isArray(v) ? v.join(", ") : "";
+								})(),
+								disabled: !enabled() || !aibotOn,
+								onChange: (v) => setField("channels.wecomAibot.toChatIds", v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ToggleRow, {
+								t,
+								labelKey: "wecomAibotInteractive",
+								hintKey: "wecomAibotInteractiveHint",
+								checked: cd("channels.wecomAibot.interactive", true),
+								disabled: !enabled() || !aibotOn,
+								onChange: (v) => setField("channels.wecomAibot.interactive", v)
+							}),
+							/* @__PURE__ */ (0, react_jsx_runtime.jsx)(WeComAiBotPanel, {
+								rpcCall: props.rpcCall,
+								t,
+								enabled: enabled(),
+								onAssociated: () => void refreshAssociation()
 							})
 						]
 					}),
@@ -3167,6 +3405,26 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			wecomWebhookUrl: "企业微信 Webhook URL",
 			wecomWebhookUrlHint: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…",
 			wecomMsgType: "消息类型",
+			channelsWecomAibot: "企业微信智能机器人",
+			wecomAibotEnabled: "智能机器人",
+			wecomAibotEnabledHint: "企业微信智能机器人通知（WebSocket 长连接，支持主动推送与双向交互，无需公网回调）",
+			wecomAibotBotId: "Bot ID",
+			wecomAibotBotIdHint: "智能机器人的 BotId，点击「扫码关联」自动填入，也可在企业管理后台手动获取",
+			wecomAibotSecret: "Bot Secret",
+			wecomAibotSecretHint: "智能机器人的 Secret，扫码关联后自动填入",
+			wecomAibotChatIds: "推送目标会话",
+			wecomAibotChatIdsHint: "会话 ID（单聊为 userid，群聊为 chatid），逗号分隔；留空推送给所有给机器人发过消息的会话",
+			wecomAibotInteractive: "双向交互",
+			wecomAibotInteractiveHint: "授权审批发「✅批准/❌拒绝」按钮卡片，提问发选项按钮卡片，点击即答；也可回复 Y/N、选项序号或自由文字续接会话；与 Web 端先到先得",
+			wecomAibotQrStart: "扫码关联",
+			wecomAibotQrStarting: "关联中…",
+			wecomAibotScanHint: "请用企业微信扫描二维码，选择要关联的智能机器人，BotId/Secret 将自动填入",
+			wecomAibotQrLoading: "正在获取二维码…",
+			wecomAibotStatusReady: "已连接",
+			wecomAibotStatusConnecting: "正在连接企业微信…",
+			wecomAibotStatusError: "连接失败",
+			wecomAibotKnownChats: "可推送会话",
+			wecomAibotNoChats: "暂无可推送会话：请先在企业微信里给智能机器人发一条消息，或填写推送目标会话",
 			channelsWechat: "微信 (ClawBot)",
 			wechatEnabled: "微信 ClawBot",
 			wechatEnabledHint: "通过腾讯 iLink 协议推送到个人微信（官方 ClawBot 通道）",
@@ -3240,6 +3498,26 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 			wecomWebhookUrl: "WeCom webhook URL",
 			wecomWebhookUrlHint: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=…",
 			wecomMsgType: "Message type",
+			channelsWecomAibot: "WeCom AI Bot",
+			wecomAibotEnabled: "AI Bot (智能机器人)",
+			wecomAibotEnabledHint: "WeCom AI Bot notifications (WebSocket long connection; proactive push + two-way interaction, no public endpoint needed)",
+			wecomAibotBotId: "Bot ID",
+			wecomAibotBotIdHint: "Bot ID of the AI Bot — filled automatically by \"Scan to associate\", or copied from the WeCom admin console",
+			wecomAibotSecret: "Bot Secret",
+			wecomAibotSecretHint: "Bot Secret of the AI Bot — filled automatically after association",
+			wecomAibotChatIds: "Push targets",
+			wecomAibotChatIdsHint: "Chat IDs (userid for DMs, chatid for groups), comma-separated; empty pushes to every chat that messaged the bot",
+			wecomAibotInteractive: "Two-way interaction",
+			wecomAibotInteractiveHint: "Approvals arrive with ✅/❌ button cards, questions with option button cards — tap to answer; Y/N text, option numbers and free text (continue session) also work; first answer wins vs the Web UI",
+			wecomAibotQrStart: "Scan to associate",
+			wecomAibotQrStarting: "Associating…",
+			wecomAibotScanHint: "Scan with WeCom (企业微信) and pick the AI Bot to associate — BotId/Secret are filled in automatically",
+			wecomAibotQrLoading: "Fetching QR code…",
+			wecomAibotStatusReady: "Connected",
+			wecomAibotStatusConnecting: "Connecting to WeCom…",
+			wecomAibotStatusError: "Connection failed",
+			wecomAibotKnownChats: "reachable chats",
+			wecomAibotNoChats: "No reachable chats yet: message the bot once in WeCom, or fill in push targets above",
 			channelsWechat: "WeChat (ClawBot)",
 			wechatEnabled: "WeChat ClawBot",
 			wechatEnabledHint: "Push to personal WeChat via Tencent iLink (official ClawBot channel)",

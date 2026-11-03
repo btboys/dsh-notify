@@ -10,7 +10,8 @@ import { loadPersistedConfig, mergePersisted, persistConfig } from './persist.js
  * Provides notification capabilities for DeepSeek Harness, supporting:
  * - System notifications (desktop)
  * - Webhook notifications (HTTP POST)
- * - WeCom bot notifications (Enterprise WeChat)
+ * - WeCom bot notifications (Enterprise WeChat group webhook bot)
+ * - WeCom AI Bot notifications (企业微信智能机器人, WebSocket long connection)
  * - WeChat ClawBot notifications (personal WeChat, Tencent iLink protocol)
  * - Telegram bot notifications
  *
@@ -44,6 +45,10 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
   const persisted = loadPersistedConfig()
   const effective = mergePersisted(config || {}, persisted)
   const service = new NotifyService(ctx, effective)
+  // The QR-association flow fills in WeCom AiBot credentials at runtime;
+  // persist those service-side config changes the same way settings-page
+  // writes are persisted.
+  service.onConfigChanged = () => persistConfig(service.getConfig())
 
   // Wire the chat interaction bridge (approval/question answerers + session
   // continuation). It talks to the current host seams directly, so there is
@@ -64,6 +69,8 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
     },
     wechatStatus: () => service.getWechatStatus(),
     wechatRelogin: () => service.reloginWechat(),
+    wecomAibotStatus: () => service.getWecomAibotStatus(),
+    wecomAibotQrStart: () => service.startWecomAibotQr(),
   }, { warn: (...args) => ctx.logger.warn(...(args as [string, ...unknown[]])) })
 
   // NOTE: no legacy `settings` namespace registration. Current dsh-settings
@@ -94,11 +101,16 @@ export default function notifyPlugin(ctx: Context, config?: NotifyPluginConfig) 
 
 // Re-export types and classes for external use
 export { NotifyService } from './service.js'
+export type { WeComAiBotStatus } from './service.js'
 export * from './types.js'
 export * from './adapters/base.js'
 export { SystemNotificationAdapter } from './adapters/system.js'
 export { WebhookNotificationAdapter } from './adapters/webhook.js'
-export { WeComNotificationAdapter } from './adapters/wecom.js'
+export { WeComNotificationAdapter, formatWeComMarkdown } from './adapters/wecom.js'
+export { WeComAiBotAdapter } from './adapters/wecom-aibot.js'
+export type { WeComAiBotState } from './adapters/wecom-aibot.js'
+export { generateQrCode, queryQrResult } from './adapters/wecom-aibot-qr.js'
+export type { QrGenerateResult, QrPollResult } from './adapters/wecom-aibot-qr.js'
 export { WeChatClawBotAdapter } from './adapters/wechat.js'
 export type { WeChatAdapterState, WeChatAdapterStatus } from './adapters/wechat.js'
 export { InteractionBridge } from './interaction.js'

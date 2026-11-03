@@ -18,6 +18,7 @@ import type {
   TelegramNotifyConfig,
   WebhookNotifyConfig,
   WeChatNotifyConfig,
+  WeComAiBotNotifyConfig,
   WeComNotifyConfig,
 } from './types.js'
 
@@ -74,6 +75,7 @@ export function mergePersisted(base: NotifyPluginConfig, persisted: NotifyPlugin
       system: { ...base.channels?.system, ...persisted.channels?.system } as SystemNotifyConfig,
       webhook: { ...base.channels?.webhook, ...persisted.channels?.webhook } as WebhookNotifyConfig,
       wecom: { ...base.channels?.wecom, ...persisted.channels?.wecom } as WeComNotifyConfig,
+      wecomAibot: { ...base.channels?.wecomAibot, ...persisted.channels?.wecomAibot } as WeComAiBotNotifyConfig,
       wechat: { ...base.channels?.wechat, ...persisted.channels?.wechat } as WeChatNotifyConfig,
       telegram: { ...base.channels?.telegram, ...persisted.channels?.telegram } as TelegramNotifyConfig,
     },

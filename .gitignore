@@ -27,3 +27,6 @@ Thumbs.db
 
 # Coverage
 coverage/
+
+# Packed artifacts
+*.tgz

@@ -4,6 +4,32 @@ import { NotificationAdapter, extraMetadataEntries } from './base.js'
 import { NotifyEvent, WeComNotifyConfig } from '../types.js'
 
 /**
+ * Markdown rendering of a notification, shared by the WeCom webhook bot and
+ * the WeCom AI Bot (智能机器人) adapter — both render the same WeCom markdown.
+ *
+ * Slim by design: no type/time footer (the title carries the state, the chat
+ * client timestamps the message). Only custom metadata outside the standard
+ * turn-summary set is appended.
+ */
+export function formatWeComMarkdown(event: NotifyEvent): string {
+  const lines: string[] = []
+
+  lines.push(`## ${event.title}`)
+  lines.push('')
+  lines.push(event.message)
+
+  const extra = extraMetadataEntries(event)
+  if (extra.length > 0) {
+    lines.push('')
+    for (const [key, value] of extra) {
+      lines.push(`- ${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/**
  * WeCom (Enterprise WeChat) bot notification adapter
  */
 export class WeComNotificationAdapter implements NotificationAdapter {
@@ -29,7 +55,7 @@ export class WeComNotificationAdapter implements NotificationAdapter {
       
       let content: string
       if (msgType === 'markdown') {
-        content = this.formatMarkdown(event)
+        content = formatWeComMarkdown(event)
       } else {
         content = `${event.title}\n\n${event.message}`
       }
@@ -68,29 +94,5 @@ export class WeComNotificationAdapter implements NotificationAdapter {
       this.ctx.logger.error('[notify] Failed to send WeCom notification:', error)
       throw error
     }
-  }
-  
-  private formatMarkdown(event: NotifyEvent): string {
-    const lines: string[] = []
-    
-    // Title
-    lines.push(`## ${event.title}`)
-    lines.push('')
-    
-    // Message
-    lines.push(event.message)
-    
-    // Slim by design: no type/time footer (the title carries the state, the
-    // chat client timestamps the message). Only custom metadata outside the
-    // standard turn-summary set is appended.
-    const extra = extraMetadataEntries(event)
-    if (extra.length > 0) {
-      lines.push('')
-      for (const [key, value] of extra) {
-        lines.push(`- ${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
-      }
-    }
-    
-    return lines.join('\n')
   }
 }

@@ -92,6 +92,44 @@ export interface WeComNotifyConfig {
 }
 
 /**
+ * WeCom AI Bot (企业微信智能机器人) notification configuration.
+ *
+ * The 智能机器人 talks over a WebSocket long connection (official
+ * `@wecom/aibot-node-sdk`) authenticated with a BotId + Secret — no webhook
+ * URL and no public endpoint needed. Credentials come from the 扫码关联 flow
+ * (settings page) or from the 企业微信管理后台 manually. Proactive pushes go
+ * to any chat that messaged the bot (learned at runtime and persisted), or to
+ * the `toChatIds` allowlist when set.
+ */
+export interface WeComAiBotNotifyConfig {
+  enabled: boolean
+  /** Bot ID (扫码关联自动填入，或企业管理后台获取) */
+  botId: string
+  /** Bot Secret (扫码关联自动填入，或企业管理后台获取) */
+  secret: string
+  /**
+   * Restrict push targets to these chat IDs (single chat: the user's userid;
+   * group chat: the group chatid). Empty (default) pushes to every chat that
+   * messaged the bot. The same allowlist gates INTERACTIVE replies.
+   */
+  toChatIds?: string[]
+  /**
+   * Enable two-way interaction (default: true when the channel is enabled):
+   * approval/question prompts are pushed with reply instructions, and the
+   * user's replies answer them (first answer wins against the Web UI) or
+   * continue the most recently notified conversation.
+   */
+  interactive?: boolean
+  /** Custom WebSocket endpoint (私有部署 only; default: wss://openws.work.weixin.qq.com). */
+  wsUrl?: string
+  /**
+   * Path of the session file that stores learned chat IDs. Defaults to
+   * `<DSH_HOME>/notify/wecom-aibot-session.json`.
+   */
+  sessionFile?: string
+}
+
+/**
  * WeChat ClawBot (iLink) bot notification configuration.
  *
  * ClawBot is Tencent's official personal-WeChat bot channel (iLink protocol,
@@ -173,6 +211,7 @@ export interface NotifyPluginConfig {
     system?: SystemNotifyConfig
     webhook?: WebhookNotifyConfig
     wecom?: WeComNotifyConfig
+    wecomAibot?: WeComAiBotNotifyConfig
     wechat?: WeChatNotifyConfig
     telegram?: TelegramNotifyConfig
   }

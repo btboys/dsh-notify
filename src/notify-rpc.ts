@@ -28,6 +28,8 @@ export const NOTIFY_ENDPOINTS = Object.freeze({
   configSet: 'notify.config.set',
   wechatStatus: 'notify.wechat.status',
   wechatRelogin: 'notify.wechat.relogin',
+  wecomAibotStatus: 'notify.wecom-aibot.status',
+  wecomAibotQrStart: 'notify.wecom-aibot.qr-start',
 })
 
 /** RPC bodies are small JSON config documents; far above any realistic edit. */
@@ -46,6 +48,10 @@ export interface NotifyRpcBridge {
   wechatStatus?(): unknown
   /** Forget the WeChat session and restart QR login; returns the new status. */
   wechatRelogin?(): unknown | Promise<unknown>
+  /** Read the WeCom AI Bot status (adapter state, known chats, QR attempt). */
+  wecomAibotStatus?(): unknown
+  /** Start a WeCom AI Bot QR association; returns the QR payload to render. */
+  wecomAibotQrStart?(): unknown | Promise<unknown>
 }
 
 /** DSH rpcErrorSchema-discriminated success. */
@@ -187,6 +193,14 @@ export function createNotifyRpcHandler(
     if (endpoint === NOTIFY_ENDPOINTS.wechatRelogin) {
       if (!bridge.wechatRelogin) return fail('wechat relogin is not available')
       return ok(await bridge.wechatRelogin())
+    }
+    if (endpoint === NOTIFY_ENDPOINTS.wecomAibotStatus) {
+      if (!bridge.wecomAibotStatus) return fail('wecom-aibot status is not available')
+      return ok(bridge.wecomAibotStatus())
+    }
+    if (endpoint === NOTIFY_ENDPOINTS.wecomAibotQrStart) {
+      if (!bridge.wecomAibotQrStart) return fail('wecom-aibot qr association is not available')
+      return ok(await bridge.wecomAibotQrStart())
     }
     return fail(`unknown notify endpoint: ${String(endpoint)}`)
   }

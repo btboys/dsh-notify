@@ -13,10 +13,13 @@ const settle = () => new Promise((r) => setTimeout(r, 150))
 
 const ctx = new Context()
 const sent = []
+const log = { info() {}, debug() {}, warn(...args) { if (String(args[0]).includes('No notification adapters available')) completionDispatchLog = String(args[0]) }, error() {} }
 const service = new NotifyService(ctx, {
   enabled: true,
   channels: { system: { enabled: false } }, // no adapters — capture notify/send instead
 })
+service.ctx.logger = log
+let completionDispatchLog = ''
 ctx.on('notify/send', (e) => { sent.push(e) })
 
 // Fake MAIN session: no origin/depth, plain log.
@@ -66,6 +69,7 @@ console.log('  ✓ subagent todo/write suppressed by default')
 ctx.emit('session/event', mainSession, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
 await settle()
 if (sent.length !== 1) throw new Error('main turn/end should notify, got ' + sent.length)
+if (!completionDispatchLog.includes('No notification adapters available')) throw new Error('completion should log that no adapters can send')
 console.log('  ✓ main agent turn/end notifies:', JSON.stringify(sent[0].title))
 
 // 4. Switch off -> subagent notifies, and content is the SUBAGENT's own work.
