@@ -110,15 +110,20 @@ async function main() {
    * The fake "browser" answerer: registered BEFORE attach, so only prepend
    * saves us. 'hold' parks the decision (a connected Web client waiting for
    * input), 'delegate' passes the request straight through to the fallback.
+   * The signal it is handed stands in for the gateway's pending-event lifetime
+   * — aborting it is what tells a real Web client to drop its card.
    */
   let browserMode = 'hold'
   let browserAnswer = null
+  const browserSeen = []
   ctx.on('approval/request', async (request, next) => {
     order.push('browser')
+    browserSeen.push({ kind: 'approval', signal: request.signal })
     return browserMode === 'delegate' ? next() : new Promise((resolve) => { browserAnswer = resolve })
   })
   ctx.on('user-questions/request', async (request, next) => {
     order.push('browser-question')
+    browserSeen.push({ kind: 'question', signal: request.signal })
     return browserMode === 'delegate' ? next() : new Promise((resolve) => { browserAnswer = resolve })
   })
   const detach = host.attach(sink.sink)
@@ -138,18 +143,33 @@ async function main() {
   if (sink.drops.length !== 1 || sink.drops[0].callId !== 'call-1') {
     throw new Error('chat prompt was not dropped after the browser won: ' + JSON.stringify(sink.drops))
   }
+  if (browserSeen[0].signal?.aborted) throw new Error('the browser answer must not cancel its own prompt')
   console.log('  - winner: browser (rejected); chat prompt dropped')
 
-  // Test 2: chat wins while the browser branch stays pending
-  console.log('✓ Test 2: chat answer wins against a pending browser answerer')
+  // Test 2: chat wins → its outcome is returned AND the browser prompt is
+  // cancelled (the gateway turns that abort into the client's dismiss), while
+  // the host's own request signal keeps running untouched.
+  console.log('✓ Test 2: chat answer wins and dismisses the pending browser prompt')
   order.length = 0
-  const a2 = askApproval(ctx, { agent: { id: 'session-1', session: { id: 'session-1' } }, toolName: 'write', callId: 'call-2' })
+  const turn = new AbortController()
+  const a2 = askApproval(ctx, {
+    agent: { id: 'session-1', session: { id: 'session-1' } },
+    toolName: 'write',
+    callId: 'call-2',
+    signal: turn.signal,
+  })
   await sleep(20)
   if (order[0] !== 'browser') throw new Error('downstream answerer never ran')
+  const browser2 = browserSeen[browserSeen.length - 1]
+  if (browser2.signal === turn.signal) throw new Error('the browser branch must see a composed lifetime, not the raw turn signal')
+  if (browser2.signal?.aborted) throw new Error('the browser prompt must stay pending until the chat answers')
   sink.answerApproval('allowed-once')
   const o2 = await a2
   if (o2 !== 'allowed-once') throw new Error('chat outcome must win, got ' + JSON.stringify(o2))
-  console.log('  - winner: chat (allowed-once)')
+  await sleep(5)
+  if (!browser2.signal?.aborted) throw new Error('chat win must cancel the browser prompt')
+  if (turn.signal.aborted) throw new Error('chat win must not abort the host request signal')
+  console.log('  - winner: chat (allowed-once); browser prompt cancelled, turn signal intact')
 
   // Test 3: an aborted question rejects with the wait's own reason
   console.log('✓ Test 3: aborted question rejects with the signal reason')
@@ -164,6 +184,7 @@ async function main() {
   await sleep(20)
   if (sink.questions.length !== 1) throw new Error('question prompt was not pushed')
   if (sink.questions[0].callId !== 'call-q1') throw new Error('question callId not forwarded')
+  const browser3 = browserSeen[browserSeen.length - 1]
   wait.abort(reason)
   let rejected = null
   try {
@@ -172,7 +193,10 @@ async function main() {
     rejected = error
   }
   if (rejected !== reason) throw new Error('question seam must reject with the wait reason, got ' + String(rejected))
-  console.log('  - rejected with the wait reason')
+  if (!browser3.signal?.aborted || browser3.signal.reason !== reason) {
+    throw new Error('the host abort must still reach the browser prompt')
+  }
+  console.log('  - rejected with the wait reason; browser prompt cancelled too')
 
   // Test 4: a request with no agent session is delegated untouched
   console.log('✓ Test 4: request without a session delegates')

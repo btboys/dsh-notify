@@ -171,6 +171,43 @@ function abortGate(signal: AbortSignal | undefined, mode: 'release' | 'throw'): 
   }
 }
 
+/**
+ * Seat a chat-controllable lifetime on a request the downstream chain will see.
+ *
+ * The Remote answerer forwards `request.signal` all the way to the API gateway,
+ * which turns that signal's abort into the `cancel` frame a connected Web
+ * client uses to drop its approval/question card and free the composer. When
+ * the chat answers first the waterfall settles without that signal ever
+ * aborting, so the browser would keep offering a decision already made
+ * elsewhere. Composing a private branch over the original lets the adapter
+ * abort only the browser delivery: the original signal still aborts the
+ * composed one (turn cancel, timed wait), so cancellation semantics and the
+ * asking service — which captured the original before the waterfall — are
+ * untouched.
+ *
+ * @param request - the host's request object, shared by every downstream listener.
+ * @returns the composed signal plus the browser-side abort, or null when the
+ *   request cannot carry one (the chat answer still wins; the Web card merely
+ *   stays until the request's own lifetime ends).
+ *
+ * ponytail: this leans on the Remote-event contract that the client honors a
+ * gateway `cancel` frame for a still-pending prompt; if a future harness adds
+ * a first-class "dismiss this interaction" seam, target that instead.
+ */
+function detachBrowser(request: unknown): { signal: AbortSignal; cancel(): void } | null {
+  if (request === null || typeof request !== 'object') return null
+  const original: unknown = (request as { signal?: unknown }).signal
+  if (original !== undefined && !(original instanceof AbortSignal)) return null
+  const branch = new AbortController()
+  const signal = original === undefined ? branch.signal : AbortSignal.any([original, branch.signal])
+  try {
+    ;(request as { signal?: AbortSignal }).signal = signal
+  } catch {
+    return null
+  }
+  return { signal, cancel: () => branch.abort(new Error('已在其他端处理')) }
+}
+
 /** A string field of an unknown record, or undefined. */
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
@@ -249,12 +286,14 @@ export class DshInteractionHost implements InteractionHost {
     const sessionId = sessionIdOf(request?.agent)
     if (!sessionId) return next()
 
+    const browser = detachBrowser(request)
+    const lifetime: AbortSignal | undefined = browser?.signal ?? request?.signal
     const view: ApprovalRequestView = {
       sessionId,
       toolName: text(request?.toolName) ?? '未知操作',
       ...(text(request?.callId) === undefined ? {} : { callId: text(request?.callId) }),
       ...(text(request?.reason) === undefined ? {} : { reason: text(request?.reason) }),
-      ...(request?.signal === undefined ? {} : { signal: request.signal }),
+      ...(lifetime === undefined ? {} : { signal: lifetime }),
     }
 
     const mine = sink.approval(view)
@@ -263,11 +302,13 @@ export class DshInteractionHost implements InteractionHost {
     const gate = abortGate(view.signal, 'release')
 
     try {
-      return await this.race([
+      const winner = await this.race([
         mine.then((value) => ({ side: 'chat' as const, value })),
         downstream.then((value) => ({ side: 'down' as const, value })),
         gate.promise as Promise<RaceOutcome<unknown>>,
       ], downstream, onLose)
+      if (winner.side === 'chat') browser?.cancel()
+      return winner.value
     } finally {
       gate.dispose()
     }
@@ -288,11 +329,13 @@ export class DshInteractionHost implements InteractionHost {
     const questions = Array.isArray(request?.questions) ? request.questions : []
     if (questions.length === 0) return next()
 
+    const browser = detachBrowser(request)
+    const lifetime: AbortSignal | undefined = browser?.signal ?? request?.signal
     const view: QuestionRequestView = {
       sessionId,
       questions,
       ...(text(request?.wait?.callId) === undefined ? {} : { callId: text(request?.wait?.callId) }),
-      ...(request?.signal === undefined ? {} : { signal: request.signal }),
+      ...(lifetime === undefined ? {} : { signal: lifetime }),
     }
 
     const mine = sink.question(view)
@@ -305,11 +348,13 @@ export class DshInteractionHost implements InteractionHost {
     const gate = abortGate(view.signal, 'throw')
 
     try {
-      return await this.race([
+      const winner = await this.race([
         mine.then((value) => ({ side: 'chat' as const, value })),
         downstream.then((value) => ({ side: 'down' as const, value })),
         gate.promise as Promise<RaceOutcome<unknown>>,
       ], downstream, onLose)
+      if (winner.side === 'chat') browser?.cancel()
+      return winner.value
     } catch (error) {
       onLose()
       throw error
@@ -325,24 +370,25 @@ export class DshInteractionHost implements InteractionHost {
 
   /**
    * Resolve the first winner of the chat answer, the downstream chain, or an
-   * abort gate. A chat `null` means the chat did not claim, so the downstream
-   * promise is returned as-is (it may still settle later).
+   * abort gate, and say which side won. A chat `null` means the chat did not
+   * claim, so the downstream promise is returned as-is (it may still settle
+   * later) and is reported as a downstream win.
    */
   private async race<T>(
     racers: Array<Promise<RaceOutcome<T>>>,
     downstream: Promise<T>,
     onLose: () => void,
-  ): Promise<T> {
+  ): Promise<RaceOutcome<T>> {
     const winner = await Promise.race(racers)
     if (winner.side === 'down') {
       onLose()
-      return winner.value
+      return winner
     }
     if (winner.value === null) {
       onLose()
-      return downstream
+      return { side: 'down', value: await downstream }
     }
-    return winner.value
+    return winner
   }
 
   // ── outbound host calls ──────────────────────────────────────────────────
