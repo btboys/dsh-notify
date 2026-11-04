@@ -1210,13 +1210,19 @@ export class NotifyService extends Service {
     const turnEvents = log.filter(e => e?.type === 'turn/start' || e?.data?.turn === turn || e?.data?.turn === undefined)
     
     // Last user message (the user's actual words). Host-injected context rides
-    // user/message events too — <system-reminder>/<hindsight_*> XML blocks and
-    // "Current runtime context" snapshots — and must never be shown as the
-    // user's prompt. No length heuristic: short real messages ("好的") are
-    // valid and must win over stale longer ones.
+    // user/message events too — <system-reminder>/<skill_catalog> XML blocks,
+    // "Current runtime context" snapshots, and dsh-time-context's
+    // "Time sampled while preparing turn N, step M" reading (appended as its
+    // own message before EVERY step, so without this filter it becomes the
+    // last user/message and hides the human's real prompt). Only
+    // source.kind === 'user' is the human typing; every other kind is host
+    // plumbing. No length heuristic: short real messages ("好的") are valid and
+    // must win over stale longer ones.
     let userPrompt = ''
     for (const e of turnEvents) {
       if (e?.type !== 'user/message') continue
+      const sourceKind = e.data?.source?.kind
+      if (typeof sourceKind === 'string' && sourceKind !== 'user') continue
       const text = this.extractText(e.data?.content)
       if (text && !this.isInjectedContext(text)) {
         userPrompt = text
