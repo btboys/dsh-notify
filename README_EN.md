@@ -331,7 +331,9 @@ WeCom notifications are formatted as clean markdown:
 
 ## 🤖 WeCom AI Bot Setup (智能机器人)
 
-The AI Bot channel uses a **WebSocket long connection** (official `@wecom/aibot-node-sdk`) — no public callback URL needed — and supports proactive push plus two-way interaction. Notifications arrive as **proactive markdown messages** (same rendering as the group webhook bot; WeCom rejects a proactive text_notice card with errcode 42045 unless it carries a `card_action` jump target, and a notification has no meaningful URL); approvals arrive with **✅/❌ button cards**; single-select questions with up to 6 options are sent as a **complete text message** (numbered options, reply with the index) — WeCom clips a card's quote area and shrinks button labels, so long prompts cannot fit a card; Multi-select, multi-question batches and larger lists use text replies until an official selection callback contract or real-device sample is verified; Y/N text, option numbers and free text (continue session) also work, first answer wins vs the Web UI. /sessions and /workspace menus are button cards too when they fit 6 entries, otherwise they fall back to numbered text.
+The AI Bot channel uses a **WebSocket long connection** (official `@wecom/aibot-node-sdk`) — no public callback URL needed — and supports proactive push plus two-way interaction. Notifications arrive as **proactive markdown messages** (same rendering as the group webhook bot; WeCom rejects a proactive text_notice card with errcode 42045 unless it carries a `card_action` jump target, and a notification has no meaningful URL); approvals arrive with **✅/❌ button cards**; single-select questions with up to 6 options are sent as a **complete text message**
+
+![Approval card and question in WeCom](docs/wecom-approval.webp) (numbered options, reply with the index) — WeCom clips a card's quote area and shrinks button labels, so long prompts cannot fit a card; Multi-select, multi-question batches and larger lists use text replies until an official selection callback contract or real-device sample is verified; Y/N text, option numbers and free text (continue session) also work, first answer wins vs the Web UI. /sessions and /workspace menus are button cards too when they fit 6 entries, otherwise they fall back to numbered text.
 
 1. In the settings page's "WeCom AI Bot" section, click **Scan to associate** and scan with 企业微信 to pick the bot — BotId/Secret are filled in and saved automatically
    (or manually: create an AI Bot in the WeCom admin console and paste BotId/Secret)
@@ -346,6 +348,8 @@ WeChat ClawBot is Tencent's official personal-WeChat bot channel (iLink protocol
 2. The settings page's "微信 (ClawBot)" section shows a login QR code — **scan it with WeChat and confirm**
 3. After login, **send the ClawBot one message in WeChat** (any content) — iLink proactive pushes must carry a `context_token` captured from an inbound message; without this step the bot cannot reach you
 4. Notifications then push to your WeChat
+
+![TODO progress pushed to WeChat](docs/wechat-todo.webp)
 
 Notes:
 
@@ -478,6 +482,8 @@ The settings page reads/writes over the **authenticated `/dsh-notify` channel**:
    ```
 
 Then restart / refresh DSH Web and open **Settings → 通知** to see and edit everything.
+
+![Settings → Notify](docs/settings-notify.webp)
 
 > 💡 The page **saves in full**: clicking "保存" writes back the entire draft and persists it across restarts. The page goes through the `/dsh-notify` RPC only; the plugin neither registers nor depends on a DSH settings namespace (that API was removed from dsh-settings in 0.1.2-alpha.2, and 1.4.4 deleted every remaining reference).
 

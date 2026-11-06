@@ -3578,6 +3578,22 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 		*/
 		/** Dictionary namespace owned by this settings page. */
 		const NS = "settings.notify";
+		/** Outline bell for the settings nav. The shell supplies size and color. */
+		function NotifyNavIcon({ size = 16 }) {
+			return (0, react.createElement)("svg", {
+				width: size,
+				height: size,
+				viewBox: "0 0 24 24",
+				fill: "none",
+				"aria-hidden": true
+			}, (0, react.createElement)("path", {
+				d: "M12 4.25v1.1M6.4 11.2a5.6 5.6 0 0 1 11.2 0V15l1.3 2.2a1 1 0 0 1-.85 1.5H5a1 1 0 0 1-.85-1.5L5.4 15v-3.8M9.4 18.8a2.6 2.6 0 0 0 5.2 0",
+				stroke: "currentColor",
+				strokeWidth: 1.6,
+				strokeLinecap: "round",
+				strokeLinejoin: "round"
+			}));
+		}
 		const name = "dsh-notify-plugin";
 		/** Required services this page injects (host-provided cordis services). */
 		const inject = [
@@ -3607,6 +3623,11 @@ window.__ModuleLoader__.load({ id: "dsh-notify-plugin", factory: (require) => {
 				locale: NS,
 				inject: () => ({ rpcCall })
 			}, NotifySettings));
+			ctx.slots.inject("settings.section.icon", () => ctx.slots.register({
+				name: "settings.section.icon",
+				id: "notify",
+				order: 60
+			}, NotifyNavIcon));
 		}
 		//#endregion
 		exports.apply = apply;
