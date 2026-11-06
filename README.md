@@ -28,7 +28,7 @@ DeepSeek Harness (DSH) 通知插件，支持多种通知渠道，在**对话完�
 
 ### 方式一：DSH Bundle 安装（推荐）
 
-本包从 `1.0.16` 起声明了 DSH 元数据（`dsh.bundle`），会作为**插件 bundle** 被 DSH 识别并在启动时自动加载，而不再只是普通依赖（否则 DSH 会提示"该包未声明 dsh 元数据，不会在启动时加载"）。
+本包声明了 DSH 元数据（`dsh.manifestVersion`、`dsh.bundle`、`engines.dsh`），会作为**插件 bundle** 被 DSH 识别并在启动时自动加载。插件市场标题与说明来自 `locale/zh.json`、`locale/en.json`，图标为包内 `icon.svg`。
 
 ```bash
 dsh plugin --profile web add dsh-notify-plugin

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Notify",
+    "description": "Desktop, webhook, WeCom, WeChat, and Telegram alerts when a conversation finishes, pauses, fails, asks a question, needs approval, or advances its task list."
+  }
+}

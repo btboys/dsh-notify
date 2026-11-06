@@ -1,7 +1,7 @@
 # DSH Configuration with Notify Plugin
 # Copy this to your DSH config and adjust the values.
 #
-# Since 1.0.16 this package declares `dsh.bundle` metadata, so it is installed
+# This package declares `dsh.manifestVersion`, `engines.dsh`, and `dsh.bundle`, so it is installed
 # as an activatable plugin bundle (not a plain dependency). Prefer installing
 # via DSH's plugin command / Web Plugin Market:
 #

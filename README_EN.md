@@ -28,7 +28,7 @@ A notification plugin for DeepSeek Harness (DSH) with multiple channels, automat
 
 ### Option 1: DSH bundle install (recommended)
 
-Since `1.0.16` this package declares DSH metadata (`dsh.bundle`) and is recognized as a **plugin bundle**, auto-loaded at startup (instead of being an inert plain dependency):
+This package declares DSH metadata (`dsh.manifestVersion`, `dsh.bundle`, `engines.dsh`) and is recognized as a **plugin bundle**, auto-loaded at startup. Plugin Manager reads the title and description from `locale/en.json` and `locale/zh.json`, and the icon from `icon.svg`.
 
 ```bash
 dsh plugin --profile web add dsh-notify-plugin

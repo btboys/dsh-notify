@@ -1,7 +1,7 @@
 # dsh-notify-plugin bundle patch layer.
 #
 # This file is the DSH *bundle* contribution of the package: it is declared by
-# the `dsh.bundle.patch` key in package.json and loaded as a profile patch layer
+# `dsh.manifestVersion`, `engines.dsh`, and the `dsh.bundle.patch` key, and loaded as a profile patch layer
 # by `dsh plugin` / the Web Plugin Market. Declaring `dsh.bundle` is also what
 # makes DSH treat the package as an activatable plugin bundle instead of a plain
 # dependency ("本包未声明 dsh 元数据，不会在启动时加载").
