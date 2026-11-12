@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { WSClient, WSAuthFailureError } from '@wecom/aibot-node-sdk'
-import type { EventMessage, TemplateCard, TemplateCardEventData, TextMessage, VoiceMessage, WsFrame } from '@wecom/aibot-node-sdk'
+import type { EventContent, EventMessage, TemplateCard, TemplateCardEventData, TextMessage, VoiceMessage, WsFrame } from '@wecom/aibot-node-sdk'
 import { randomUUID } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -54,6 +54,10 @@ const MAX_QUOTE_LENGTH = 1000
 const MAX_CARD_BUTTONS = 6
 /** WeCom recommends no more than 10 characters for each card button label. */
 const MAX_BUTTON_LABEL_LENGTH = 10
+/** WeCom discards a card-event reply after 5s; ack well inside that window. */
+const CARD_ACK_DEADLINE_MS = 3000
+/** Pending card tasks expire defensively (the host settles prompts long before). */
+const CARD_TASK_TTL_MS = 60 * 60_000
 /** First delay before rebuilding a connection the server took over. */
 const RECONNECT_BASE_DELAY_MS = 3000
 /** Cap for the take-over reconnect backoff (a busy bot can be taken over repeatedly). */
@@ -78,6 +82,30 @@ function translateCardEvent(event: TemplateCardEventData | undefined): string | 
     return command.startsWith('/sel ') ? command : null
   }
   return null
+}
+
+/**
+ * Read the clicked-card fields off a callback body.
+ *
+ * WeCom nests the payload under `event.template_card_event`
+ * (`{"eventtype":"template_card_event","template_card_event":{"event_key":…,"task_id":…}}`
+ * — 接收事件 · 模板卡片事件), while the SDK's TypeScript type and README example
+ * flatten `event_key`/`task_id` onto `event`. Reading only the flat shape makes
+ * every real tap look like an unknown button, so it is dropped silently and
+ * WeCom falls back to its generic "ok" acknowledgement: the reported symptom of
+ * 批准没有送到会话。 Accept the nested shape first, keep the flat one for
+ * compatibility with older payloads.
+ */
+function cardEventOf(body: EventMessage | undefined): TemplateCardEventData | undefined {
+  const raw = body?.event as (EventContent & { template_card_event?: TemplateCardEventData }) | undefined
+  if (!raw) return undefined
+  const nested = raw.template_card_event
+  if (nested !== null && typeof nested === 'object') {
+    // The nested object carries only the card fields (card_type/event_key/
+    // task_id); `eventtype` stays on the outer event and is never needed here.
+    return nested
+  }
+  return raw as TemplateCardEventData
 }
 
 /** Neutral ack title replacing a card after a tap (the real outcome follows as a receipt message). */
@@ -337,7 +365,7 @@ export class WeComAiBotAdapter implements NotificationAdapter {
 
   private registerCard(chatId: string, card: TemplateCard, entry?: PromptInteraction): string {
     for (const [id, task] of this.cardTasks) {
-      if (Date.now() - task.createdAt > 60 * 60_000) this.cardTasks.delete(id)
+      if (Date.now() - task.createdAt > CARD_TASK_TTL_MS) this.cardTasks.delete(id)
     }
     if (this.cardTasks.size >= 500) this.cardTasks.delete(this.cardTasks.keys().next().value!)
     const id = `dsh-${randomUUID()}`
@@ -430,7 +458,7 @@ export class WeComAiBotAdapter implements NotificationAdapter {
       const transcript = frame.body?.voice?.content
       this.handleInbound(frame, transcript ? `[语音] ${transcript}` : '')
     })
-    client.on('event.template_card_event', (frame: WsFrame<EventMessage & { event: TemplateCardEventData }>) => {
+    client.on('event.template_card_event', (frame: WsFrame<EventMessage>) => {
       void this.handleCardEvent(frame).catch(error => this.ctx.logger.warn('[notify] Card callback failed:', error))
     })
   }
@@ -441,35 +469,95 @@ export class WeComAiBotAdapter implements NotificationAdapter {
    * the card with a static confirmation (must ack within 5s of the event;
    * the bridge's real outcome receipt follows as a separate message).
    */
-  private async handleCardEvent(frame: WsFrame<EventMessage & { event: TemplateCardEventData }>): Promise<void> {
+  private async handleCardEvent(frame: WsFrame<EventMessage>): Promise<void> {
     const body = frame.body
-    const event = body?.event as TemplateCardEventData | undefined
+    const event = cardEventOf(body)
     const key = event?.event_key
-    if (!key) return
+    const taskId = event?.task_id
+    if (!key) {
+      this.ctx.logger.warn('[notify] WeCom AiBot card event without event_key: %s', JSON.stringify(body?.event))
+      return
+    }
     const chatId: string | undefined = body?.chattype === 'group'
       ? body?.chatid
       : body?.from?.userid
-
-    const task = event?.task_id ? this.cardTasks.get(event.task_id) : undefined
-    if (!chatId || !this.canInteract(chatId) || !task || task.chatId !== chatId
-      || !task.keys.has(key) || Date.now() - task.createdAt > 60 * 60_000) return
-    const text = translateCardEvent(event)
-    if (!text) return // Never acknowledge an unrecognized selection as submitted.
-    this.cardTasks.delete(event!.task_id!) // Claim before awaiting: duplicate taps cannot race.
-    const accepted = task.entry
-      ? await this.onPromptReply?.(chatId, text, task.entry)
-      : await Promise.resolve(this.onUserMessage?.(chatId, text)).then(() => true)
-
-    if (this.client && event?.task_id) {
-      this.client.updateTemplateCard(frame, {
-        card_type: 'text_notice',
-        main_title: { title: accepted ? cardAckTitle(key) : '请求已失效或已在其他端处理' },
-        task_id: event.task_id,
-      }).catch((error) => {
-        this.ctx.logger.warn('[notify] WeCom AiBot updateTemplateCard failed:', error)
-      })
+    if (!chatId) {
+      this.ctx.logger.warn('[notify] WeCom AiBot card event without a chat id (key=%s task=%s)', key, taskId)
+      return
+    }
+    if (!this.canInteract(chatId)) {
+      this.ctx.logger.warn('[notify] WeCom AiBot card tap from non-allowlisted chat %s ignored', chatId)
+      return
     }
 
+    const task = taskId ? this.cardTasks.get(taskId) : undefined
+    if (!task || task.chatId !== chatId || !task.keys.has(key)) {
+      this.ctx.logger.warn('[notify] WeCom AiBot card tap matches no live prompt (chat=%s key=%s task=%s)', chatId, key, taskId)
+      return
+    }
+    if (Date.now() - task.createdAt > CARD_TASK_TTL_MS) {
+      this.cardTasks.delete(taskId!)
+      this.ctx.logger.warn('[notify] WeCom AiBot card tap on an expired prompt (chat=%s key=%s)', chatId, key)
+      return
+    }
+
+    const text = translateCardEvent(event)
+    if (!text) {
+      this.ctx.logger.warn('[notify] WeCom AiBot card tap with an unrecognized key %s ignored', key)
+      return
+    }
+    this.cardTasks.delete(taskId!) // Claim before awaiting: duplicate taps cannot race.
+
+    const routed = (task.entry
+      ? Promise.resolve(this.onPromptReply?.(chatId, text, task.entry))
+      : Promise.resolve(this.onUserMessage?.(chatId, text)).then(() => true)
+    ).then((ok) => ({ ok: ok === true })).catch((error) => {
+      this.ctx.logger.warn('[notify] WeCom AiBot card routing failed:', error)
+      return { ok: false }
+    })
+
+    // Ack inside WeCom's 5s window even when the receipt push is slow: replace
+    // the card optimistically and report a rejection as its own message.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const outcome = await Promise.race([
+      routed,
+      new Promise<{ timeout: true }>((resolve) => {
+        timer = setTimeout(() => resolve({ timeout: true }), CARD_ACK_DEADLINE_MS)
+      }),
+    ])
+    if (timer) clearTimeout(timer)
+
+    if ('timeout' in outcome) {
+      this.ackCard(frame, taskId, cardAckTitle(key))
+      void routed.then((result) => {
+        if (!result.ok) this.sendChatText(chatId, '⚠️ 该请求已失效或已在其他端处理')
+      })
+      return
+    }
+    this.ackCard(frame, taskId, outcome.ok ? cardAckTitle(key) : '请求已失效或已在其他端处理')
+  }
+
+  /** Replace a tapped card with a static title (WeCom expires the reply after 5s). */
+  private ackCard(frame: WsFrame, taskId: string | undefined, title: string): void {
+    if (!this.client || !taskId) return
+    this.client.updateTemplateCard(frame, {
+      card_type: 'text_notice',
+      main_title: { title },
+      task_id: taskId,
+    }).catch((error) => {
+      this.ctx.logger.warn('[notify] WeCom AiBot updateTemplateCard failed:', error)
+    })
+  }
+
+  /** Best-effort markdown note to one chat (after the card itself was acknowledged). */
+  private sendChatText(chatId: string, text: string): void {
+    if (!this.client) return
+    this.client.sendMessage(chatId, {
+      msgtype: 'markdown',
+      markdown: { content: truncateAtLine(text, MAX_MARKDOWN_LENGTH) },
+    }).catch((error) => {
+      this.ctx.logger.warn('[notify] WeCom AiBot sendMessage to %s failed:', chatId, error)
+    })
   }
 
   /**

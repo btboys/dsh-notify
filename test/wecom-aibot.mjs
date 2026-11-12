@@ -207,15 +207,19 @@ async function main() {
   assert(mcard.button_list.every(button => button.text.length <= 10), 'menu button labels respect WeCom recommended width')
   assert(await bot.sendMenu(menu(8)) === false, '>6 entries → text fallback')
 
-  // Only issued, matching, allowlisted tasks can route a callback.
+  // Only issued, matching, allowlisted tasks can route a callback. WeCom sends
+  // the fields NESTED under `event.template_card_event` (接收事件 · 模板卡片事件);
+  // the SDK's own type flattens them — the flat shape is kept for compatibility.
   const replies = []
   bot.onPromptReply = async (chatId, text, entry) => { replies.push({ chatId, text, entry }); return true }
   const approval = { kind: 'approval', sessionId: 'a', toolName: 'bash', createdAt: Date.now(), settle() {} }
   await bot.sendPrompt(approval)
   const issued = client.sent.at(-1).body.template_card.task_id
-  const tap = (task, key, user = 'zhangsan') => client.emit('event.template_card_event', {
+  const tap = (task, key, user = 'zhangsan', nested = true) => client.emit('event.template_card_event', {
     headers: { req_id: 'ev' }, body: { chattype: 'single', from: { userid: user },
-      event: { eventtype: 'template_card_event', task_id: task, event_key: key } },
+      event: nested
+        ? { eventtype: 'template_card_event', template_card_event: { card_type: 'button_interaction', event_key: key, task_id: task } }
+        : { eventtype: 'template_card_event', task_id: task, event_key: key } },
   })
   tap('unknown', 'a')
   tap(issued, 'a', 'other-chat')
@@ -223,8 +227,16 @@ async function main() {
   tap(issued, 'a')
   tap(issued, 'a')
   await new Promise(resolve => setImmediate(resolve))
-  assert(replies.length === 1 && replies[0].entry === approval && replies[0].text === 'Y', 'exact prompt and replay protection')
+  assert(replies.length === 1 && replies[0].entry === approval && replies[0].text === 'Y', 'nested card event routes the exact prompt')
+  assert(replies[0].chatId === 'zhangsan', 'single chat keys on the sender userid')
   assert(client.updates.length === 1, 'only accepted callback acknowledged')
+
+  // The flat (SDK-declared) shape must keep working for older payloads.
+  const flatApproval = { kind: 'approval', sessionId: 'b', toolName: 'write', createdAt: Date.now(), settle() {} }
+  await bot.sendPrompt(flatApproval)
+  tap(client.sent.at(-1).body.template_card.task_id, 'r', 'zhangsan', false)
+  await new Promise(resolve => setImmediate(resolve))
+  assert(replies.length === 2 && replies[1].entry === flatApproval && replies[1].text === 'N', 'flat card payload still routes')
 
   bot.dispose()
   rmSync(dir, { recursive: true, force: true })
